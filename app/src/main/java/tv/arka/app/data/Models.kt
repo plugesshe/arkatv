@@ -66,6 +66,12 @@ data class Vod(
     val backdrop: String = "",
 )
 
+/**
+ * A past (or running) programme the provider keeps for replay. [startText] is the start in the
+ * provider's own clock, as its replay address expects it ("2026-11-27:18-00").
+ */
+class ReplayProgram(val title: String, val description: String, val start: Long, val end: Long, val startText: String)
+
 /** A group of live channels made by the user; [ids] keeps the order in which they were added. */
 data class ChannelGroup(val name: String, val ids: List<String>)
 

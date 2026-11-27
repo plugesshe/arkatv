@@ -235,7 +235,8 @@ class PlayerActivity : ComponentActivity() {
                         exo.seekToDefaultPosition()
                         exo.prepare()
                     }
-                    item.live && !triedAlternative && alternative != null -> {
+                    // Live channels and replays exist in two formats: the other one is tried once.
+                    (item.live || "/timeshift/" in currentUrl) && !triedAlternative && alternative != null -> {
                         triedAlternative = true
                         start(alternative, 0)
                     }
@@ -341,7 +342,7 @@ class PlayerActivity : ComponentActivity() {
 
     /** Xtream live streams exist as both .ts and .m3u8: try the other one when the first fails. */
     private fun alternativeUrl(url: String): String? = when {
-        "/live/" !in url -> null
+        "/live/" !in url && "/timeshift/" !in url -> null
         url.endsWith(".ts") -> url.removeSuffix(".ts") + ".m3u8"
         url.endsWith(".m3u8") -> url.removeSuffix(".m3u8") + ".ts"
         else -> null
@@ -400,6 +401,8 @@ class PlayerActivity : ComponentActivity() {
 
     private fun seekBy(delta: Long) {
         val exo = player ?: return
+        // Some replays are plain streams without an index: there is nothing to seek in.
+        if (!exo.isCurrentMediaItemSeekable) return
         val duration = exo.duration
         val target = exo.currentPosition + delta
         exo.seekTo(if (duration > 0) target.coerceIn(0, duration) else target.coerceAtLeast(0))

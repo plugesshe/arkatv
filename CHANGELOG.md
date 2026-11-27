@@ -16,6 +16,8 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Direct
+- Replay (sources Xtream) : appui long sur une chaîne › « Replay de la chaîne » liste les programmes
+  que le fournisseur conserve et les relit depuis le début.
 - Groupes de chaînes personnels : appui long sur une chaîne pour l'ajouter à un groupe ou en créer un ;
   les groupes apparaissent dans le direct et dans le guide, par profil et par source.
 

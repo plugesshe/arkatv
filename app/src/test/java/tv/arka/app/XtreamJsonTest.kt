@@ -14,6 +14,33 @@ import java.io.StringReader
 class XtreamJsonTest {
 
     @Test
+    fun listsOnlyTheProgrammesKeptForReplay() {
+        fun b64(text: String) = android.util.Base64.encodeToString(text.toByteArray(), android.util.Base64.NO_WRAP)
+        val root = JSONObject(
+            """{"epg_listings":[
+              {"title":"${b64("Journal de 20 h")}","description":"${b64("L'actualité")}","start":"2026-11-26 20:00:00",
+               "start_timestamp":"1000","stop_timestamp":"2800","has_archive":1},
+              {"title":"${b64("Film du soir")}","description":"","start":"2026-11-26 20:30:00",
+               "start_timestamp":2800,"stop_timestamp":8200,"has_archive":1},
+              {"title":"${b64("Sans replay")}","description":"","start":"2026-11-26 19:00:00",
+               "start_timestamp":"500","stop_timestamp":"1000","has_archive":0},
+              {"title":"${b64("Pas encore diffusé")}","description":"","start":"2026-11-27 23:00:00",
+               "start_timestamp":"99000","stop_timestamp":"99900","has_archive":1}
+            ]}"""
+        )
+        val programs = XtreamJson.replayPrograms(root, now = 9000)
+        assertEquals(listOf("Film du soir", "Journal de 20 h"), programs.map { it.title })
+        assertEquals("2026-11-26:20-30", programs[0].startText)
+        assertEquals("L'actualité", programs[1].description)
+        val api = XtreamApi(Source("x", "xtream", "X", "http://host.test:8080", "alice", "s3cret"))
+        assertEquals(
+            "http://host.test:8080/timeshift/alice/s3cret/90/2026-11-26:20-30/42.ts",
+            api.replayUrl("42", programs[0].startText, 90),
+        )
+        assertEquals(0, XtreamJson.replayPrograms(JSONObject("{}"), 9000).size)
+    }
+
+    @Test
     fun readsFlatObjectsWhateverTheValueTypes() {
         val json = """
             [

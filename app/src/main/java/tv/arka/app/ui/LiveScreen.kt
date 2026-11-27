@@ -54,6 +54,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import tv.arka.app.data.Channel
 import tv.arka.app.data.ChannelGroup
+import tv.arka.app.data.ReplayProgram
+import androidx.compose.runtime.LaunchedEffect
 import tv.arka.app.data.Repo
 
 const val CATEGORY_ALL = "*all*"
@@ -210,6 +212,7 @@ fun LiveScreen() {
     }
     var menuFor by remember { mutableStateOf<Channel?>(null) }
     var newGroupFor by remember { mutableStateOf<Channel?>(null) }
+    var replayFor by remember { mutableStateOf<Channel?>(null) }
     var focused by remember { mutableStateOf<Channel?>(null) }
     val now = rememberNow()
 
@@ -290,6 +293,12 @@ fun LiveScreen() {
             if (favorite && position in 0 until favoriteOrder.lastIndex) {
                 SheetOption("Descendre dans les favoris", false, onClick = { Repo.moveFavorite(channel.id, 1) })
             }
+            if (Repo.active?.type == "xtream") {
+                SheetOption("Replay de la chaîne", false, onClick = {
+                    replayFor = channel
+                    menuFor = null
+                })
+            }
             // The user's own groups: tick to add, untick to remove.
             groups.forEach { group ->
                 val inside = channel.id in group.ids
@@ -312,6 +321,28 @@ fun LiveScreen() {
                 Repo.setChannelHidden(channel.id, true)
                 menuFor = null
             })
+        }
+    }
+
+    replayFor?.let { channel ->
+        var loaded by remember(channel.id) { mutableStateOf<List<ReplayProgram>?>(null) }
+        var failed by remember(channel.id) { mutableStateOf(false) }
+        LaunchedEffect(channel.id) {
+            val programs = Repo.replayPrograms(channel)
+            if (programs == null) failed = true else loaded = programs
+        }
+        ArkaSheet("Replay · " + channel.name, onDismiss = { replayFor = null }) {
+            val programs = loaded
+            when {
+                failed -> Text("Le fournisseur n'a pas répondu. Réessayez dans un instant.", color = ArkaColors.TextSecondary)
+                programs == null -> Text("Chargement…", color = ArkaColors.TextSecondary)
+                programs.isEmpty() -> Text("Cette chaîne ne propose pas de replay.", color = ArkaColors.TextSecondary)
+                else -> programs.take(150).forEach { program ->
+                    SheetOption(formatDateTime(program.start) + " · " + program.title, false, onClick = {
+                        Repo.replayItem(channel, program)?.let { play(context, listOf(it), 0) }
+                    })
+                }
+            }
         }
     }
 

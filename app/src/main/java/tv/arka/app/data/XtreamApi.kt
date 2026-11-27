@@ -21,6 +21,16 @@ class XtreamApi(private val source: Source) {
     fun movieUrl(id: String, ext: String): String = "$base/movie/${source.user}/${source.pass}/$id.$ext"
     fun episodeUrl(id: String, ext: String): String = "$base/series/${source.user}/${source.pass}/$id.$ext"
 
+    /** Replay of a past programme kept by the provider ("catch-up"). */
+    fun replayUrl(id: String, startText: String, minutes: Int): String =
+        "$base/timeshift/${source.user}/${source.pass}/$minutes/$startText/$id.ts"
+
+    /** The programmes of a channel that can be replayed, most recent first; empty when it keeps none. */
+    fun replayPrograms(id: String): List<ReplayProgram> = XtreamJson.replayPrograms(
+        JSONObject(Http.getString(api("get_simple_data_table", "&stream_id=${enc(id)}"))),
+        System.currentTimeMillis() / 1000,
+    )
+
     private fun enc(value: String): String = URLEncoder.encode(value, "UTF-8")
 
     private fun api(action: String?, extra: String = ""): String {
@@ -152,6 +162,44 @@ class XtreamApi(private val source: Source) {
 
 /** Pure parsing of Xtream Codes responses, kept apart from the network for testing. */
 object XtreamJson {
+
+    private val replayStart = Regex("(\\d{4}-\\d{2}-\\d{2}) (\\d{2}):(\\d{2})(:\\d{2})?")
+
+    /** Providers send these texts in Base64; a few send them plain. */
+    private fun decoded(text: String): String {
+        if (text.isBlank()) return ""
+        return try {
+            val bytes = android.util.Base64.decode(text, android.util.Base64.DEFAULT)
+            val plain = String(bytes, Charsets.UTF_8)
+            if (plain.isBlank() || plain.contains('\uFFFD')) text else plain
+        } catch (e: IllegalArgumentException) {
+            text
+        }
+    }
+
+    /** [root] is the answer to "get_simple_data_table". Only programmes already started and kept are returned. */
+    fun replayPrograms(root: JSONObject, now: Long): List<ReplayProgram> {
+        val listings = root.optJSONArray("epg_listings") ?: return emptyList()
+        val out = ArrayList<ReplayProgram>()
+        for (i in 0 until listings.length()) {
+            val item = listings.optJSONObject(i) ?: continue
+            if (item.optInt("has_archive", 0) != 1) continue
+            val start = item.optLong("start_timestamp", 0)
+            val end = item.optLong("stop_timestamp", 0)
+            val match = replayStart.matchEntire(item.optString("start").trim()) ?: continue
+            if (start <= 0 || end <= start || start > now) continue
+            out.add(
+                ReplayProgram(
+                    title = decoded(item.optString("title")).trim().ifBlank { "Programme" },
+                    description = decoded(item.optString("description")).trim(),
+                    start = start,
+                    end = end,
+                    startText = match.groupValues[1] + ":" + match.groupValues[2] + "-" + match.groupValues[3],
+                )
+            )
+        }
+        return out.sortedByDescending { it.start }
+    }
 
     /** [userInfo] is the "user_info" object of the authentication answer. */
     fun accountInfo(userInfo: JSONObject, now: Long): AccountInfo = AccountInfo(

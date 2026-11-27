@@ -92,6 +92,34 @@ object Repo {
     /** Live category ids the user chose to hide. */
     var hiddenCategories by mutableStateOf(setOf<String>())
 
+    /** Programmes of [channel] the provider keeps for replay; null when it could not be asked. */
+    suspend fun replayPrograms(channel: Channel): List<ReplayProgram>? {
+        val source = active ?: return null
+        if (source.type != "xtream") return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                XtreamApi(source).replayPrograms(channel.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    fun replayItem(channel: Channel, program: ReplayProgram): PlayItem? {
+        val source = active ?: return null
+        val minutes = ((program.end - program.start + 59) / 60).toInt().coerceIn(1, 24 * 60)
+        return PlayItem(
+            key = "r:${channel.id}:${program.start}",
+            title = program.title,
+            subtitle = channel.name + " · replay",
+            url = XtreamApi(source).replayUrl(channel.id, program.startText, minutes),
+            live = false,
+            poster = channel.logo,
+        )
+    }
+
     /** Channel groups made by the user for the active profile and source. */
     var channelGroups by mutableStateOf(listOf<ChannelGroup>())
 
