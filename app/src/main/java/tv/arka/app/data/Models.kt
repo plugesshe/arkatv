@@ -66,6 +66,9 @@ data class Vod(
     val backdrop: String = "",
 )
 
+/** A group of live channels made by the user; [ids] keeps the order in which they were added. */
+data class ChannelGroup(val name: String, val ids: List<String>)
+
 /** A home row built by ArkaTV from matched titles, instead of a provider category. */
 class SmartRow(
     val title: String,

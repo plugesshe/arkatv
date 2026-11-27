@@ -53,11 +53,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import tv.arka.app.data.Channel
+import tv.arka.app.data.ChannelGroup
 import tv.arka.app.data.Repo
 
 const val CATEGORY_ALL = "*all*"
 const val CATEGORY_FAVORITES = "*fav*"
 const val CATEGORY_RECENT = "*recent*"
+
+/** Prefix of the category id of a group made by the user. */
+const val CATEGORY_GROUP = "*group*:"
 
 /** Group filter shared by the live list and the guide. The last chip opens the group manager. */
 @Composable
@@ -74,6 +78,9 @@ fun CategoryChips(selected: String, onSelect: (String) -> Unit) {
             item { ArkaChip("Récentes", selected == CATEGORY_RECENT) { onSelect(CATEGORY_RECENT) } }
         }
         item { ArkaChip("Toutes", selected == CATEGORY_ALL) { onSelect(CATEGORY_ALL) } }
+        items(Repo.channelGroups) { group ->
+            ArkaChip("◆ " + group.name, selected == CATEGORY_GROUP + group.name) { onSelect(CATEGORY_GROUP + group.name) }
+        }
         items(visible) { category ->
             ArkaChip(category.name, selected == category.id) { onSelect(category.id) }
         }
@@ -127,6 +134,7 @@ fun channelsFor(
     recent: List<String>,
     hiddenCategories: Set<String>,
     hiddenChannels: Set<String>,
+    groups: List<ChannelGroup> = emptyList(),
 ): List<Channel> {
     val visible = if (hiddenChannels.isEmpty()) channels else channels.filter { it.id !in hiddenChannels }
     return when (category) {
@@ -139,7 +147,12 @@ fun channelsFor(
             val byId = visible.associateBy { it.id }
             recent.mapNotNull { byId[it] }
         }
-        else -> visible.filter { it.categoryId == category }
+        else -> if (category.startsWith(CATEGORY_GROUP)) {
+            val byId = visible.associateBy { it.id }
+            groups.firstOrNull { it.name == category.removePrefix(CATEGORY_GROUP) }?.ids.orEmpty().mapNotNull { byId[it] }
+        } else {
+            visible.filter { it.categoryId == category }
+        }
     }
 }
 
@@ -169,7 +182,11 @@ private fun groupLabel(category: String): String = when (category) {
     CATEGORY_ALL -> "Toutes"
     CATEGORY_FAVORITES -> "Favoris"
     CATEGORY_RECENT -> "Récentes"
-    else -> Repo.liveCategories.firstOrNull { it.id == category }?.name.orEmpty()
+    else -> if (category.startsWith(CATEGORY_GROUP)) {
+        category.removePrefix(CATEGORY_GROUP)
+    } else {
+        Repo.liveCategories.firstOrNull { it.id == category }?.name.orEmpty()
+    }
 }
 
 /**
@@ -187,10 +204,12 @@ fun LiveScreen() {
     val hidden = Repo.hiddenCategories
     val hiddenChannels = Repo.hiddenChannels
     val favoriteOrder = Repo.favoriteOrder
-    val list = remember(channels, category, favoriteOrder, recent, hidden, hiddenChannels) {
-        channelsFor(category, channels, favoriteOrder, recent, hidden, hiddenChannels)
+    val groups = Repo.channelGroups
+    val list = remember(channels, category, favoriteOrder, recent, hidden, hiddenChannels, groups) {
+        channelsFor(category, channels, favoriteOrder, recent, hidden, hiddenChannels, groups)
     }
     var menuFor by remember { mutableStateOf<Channel?>(null) }
+    var newGroupFor by remember { mutableStateOf<Channel?>(null) }
     var focused by remember { mutableStateOf<Channel?>(null) }
     val now = rememberNow()
 
@@ -234,6 +253,9 @@ fun LiveScreen() {
                     item { GroupLine("Récentes", category == CATEGORY_RECENT) { category = CATEGORY_RECENT } }
                 }
                 item { GroupLine("Toutes", category == CATEGORY_ALL) { category = CATEGORY_ALL } }
+                items(groups) { group ->
+                    GroupLine("◆ " + group.name, category == CATEGORY_GROUP + group.name) { category = CATEGORY_GROUP + group.name }
+                }
                 items(Repo.liveCategories.filter { it.id !in hidden }) { group ->
                     GroupLine(group.name, category == group.id) { category = group.id }
                 }
@@ -268,10 +290,45 @@ fun LiveScreen() {
             if (favorite && position in 0 until favoriteOrder.lastIndex) {
                 SheetOption("Descendre dans les favoris", false, onClick = { Repo.moveFavorite(channel.id, 1) })
             }
+            // The user's own groups: tick to add, untick to remove.
+            groups.forEach { group ->
+                val inside = channel.id in group.ids
+                SheetOption("Groupe « ${group.name} »", inside, onClick = {
+                    if (inside) Repo.removeFromGroup(group.name, channel.id) else Repo.addToGroup(group.name, channel.id)
+                })
+            }
+            SheetOption("Nouveau groupe…", false, onClick = {
+                newGroupFor = channel
+                menuFor = null
+            })
+            if (category.startsWith(CATEGORY_GROUP)) {
+                SheetOption("Supprimer ce groupe", false, onClick = {
+                    Repo.deleteGroup(category.removePrefix(CATEGORY_GROUP))
+                    category = CATEGORY_ALL
+                    menuFor = null
+                })
+            }
             SheetOption("Masquer cette chaîne", false, onClick = {
                 Repo.setChannelHidden(channel.id, true)
                 menuFor = null
             })
+        }
+    }
+
+    newGroupFor?.let { channel ->
+        var name by remember(channel.id) { mutableStateOf("") }
+        ArkaSheet("Nouveau groupe", onDismiss = { newGroupFor = null }) {
+            ArkaField("Nom du groupe", name, "Sport, Enfants, Infos…") { name = it.take(30) }
+            Box(Modifier.padding(top = ArkaSpacing.md)) {
+                PrimaryButton(
+                    "Créer avec « ${channel.name} »",
+                    {
+                        Repo.addToGroup(name, channel.id)
+                        newGroupFor = null
+                    },
+                    enabled = name.isNotBlank(),
+                )
+            }
         }
     }
 }

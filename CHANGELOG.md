@@ -15,6 +15,10 @@
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
+### Direct
+- Groupes de chaînes personnels : appui long sur une chaîne pour l'ajouter à un groupe ou en créer un ;
+  les groupes apparaissent dans le direct et dans le guide, par profil et par source.
+
 ### Catalogue enrichi (TMDB)
 - Filtres « Langue » (français, VOSTFR, multi-langues) et « Qualité » (4K, Full HD, HD) sur les pages
   Films et Séries, dans les deux organisations.

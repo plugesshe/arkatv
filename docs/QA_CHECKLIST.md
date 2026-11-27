@@ -159,3 +159,11 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Étiquettes langue / qualité sur les affiches des catégories du fournisseur.
 - [ ] « Accueil organisé par ArkaTV : non » rétablit les catégories du fournisseur.
 - [ ] Profil enfant : aucune rangée ne montre un titre d'une catégorie masquée.
+
+## Lot « catalogue ArkaTV, filtres, groupes » — à vérifier sur appareil
+
+- [ ] Films / Séries : genres TMDB, tri par popularité, « Non reconnus », bouton « Organisation ».
+- [ ] Filtres Langue et Qualité, dans les deux organisations.
+- [ ] Une œuvre en plusieurs versions : la tuile ouvre la version française, « Versions » propose les autres.
+- [ ] Épisode suivant : carte une minute avant la fin, dix secondes, puis épisode suivant ; « Masquer » laisse finir.
+- [ ] Direct : appui long sur une chaîne › « Nouveau groupe… », puis ajout d'autres chaînes ; le groupe apparaît dans le guide.

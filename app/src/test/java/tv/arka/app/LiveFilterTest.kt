@@ -3,8 +3,10 @@ package tv.arka.app
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import tv.arka.app.data.Channel
+import tv.arka.app.data.ChannelGroup
 import tv.arka.app.ui.CATEGORY_ALL
 import tv.arka.app.ui.CATEGORY_FAVORITES
+import tv.arka.app.ui.CATEGORY_GROUP
 import tv.arka.app.ui.CATEGORY_RECENT
 import tv.arka.app.ui.channelsFor
 
@@ -20,6 +22,16 @@ class LiveFilterTest {
         hiddenCategories: Set<String> = emptySet(),
         hiddenChannels: Set<String> = emptySet(),
     ) = channelsFor(category, channels, favorites, recent, hiddenCategories, hiddenChannels).map { it.id }
+
+    @Test
+    fun userGroupsKeepTheirOwnOrderAndSkipMissingChannels() {
+        val groups = listOf(ChannelGroup("Sport", listOf("3", "1", "9")))
+        fun group(name: String, hiddenChannels: Set<String> = emptySet()) =
+            channelsFor(CATEGORY_GROUP + name, channels, emptyList(), emptyList(), emptySet(), hiddenChannels, groups).map { it.id }
+        assertEquals(listOf("3", "1"), group("Sport"))
+        assertEquals(listOf("3"), group("Sport", hiddenChannels = setOf("1")))
+        assertEquals(emptyList<String>(), group("Inconnu"))
+    }
 
     @Test
     fun showsEverythingByDefault() {

@@ -92,6 +92,34 @@ object Repo {
     /** Live category ids the user chose to hide. */
     var hiddenCategories by mutableStateOf(setOf<String>())
 
+    /** Channel groups made by the user for the active profile and source. */
+    var channelGroups by mutableStateOf(listOf<ChannelGroup>())
+
+    private fun saveGroups(groups: List<ChannelGroup>) {
+        val source = active ?: return
+        channelGroups = groups
+        Store.saveChannelGroups(source.id, groups)
+    }
+
+    /** Adds the channel to the group, creating the group when it does not exist yet. */
+    fun addToGroup(name: String, channelId: String) {
+        val clean = name.trim().take(30)
+        if (clean.isEmpty()) return
+        val existing = channelGroups.firstOrNull { it.name.equals(clean, ignoreCase = true) }
+        saveGroups(
+            if (existing == null) {
+                channelGroups + ChannelGroup(clean, listOf(channelId))
+            } else {
+                channelGroups.map { if (it === existing && channelId !in it.ids) it.copy(ids = it.ids + channelId) else it }
+            }
+        )
+    }
+
+    fun removeFromGroup(name: String, channelId: String) =
+        saveGroups(channelGroups.map { if (it.name == name) it.copy(ids = it.ids - channelId) else it })
+
+    fun deleteGroup(name: String) = saveGroups(channelGroups.filter { it.name != name })
+
     // ----- Catalogue enriched with TMDB (the user's own key).
 
     var tmdbToken by mutableStateOf("")
@@ -400,6 +428,7 @@ object Repo {
         }
         recentChannels = Store.loadRecentChannels(source.id)
         hiddenCategories = Store.loadHiddenCategories(source.id)
+        channelGroups = Store.loadChannelGroups(source.id)
         watched = Store.loadWatched(source.id)
         followed = Store.loadFollowed(source.id).map { it.copy(name = TitleCleaner.title(it.name)) }
         lockedCategories = Store.loadLockedCategories(source.id)

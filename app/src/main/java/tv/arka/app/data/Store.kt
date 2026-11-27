@@ -226,6 +226,21 @@ object Store {
     /** Favourite channel ids in the order chosen by the user. */
     fun loadFavoriteOrder(sourceId: String): List<String> = loadStrings(scoped("fav_$sourceId")).distinct()
 
+    /** The user's own channel groups, per profile and per source. */
+    fun loadChannelGroups(sourceId: String): List<ChannelGroup> =
+        readArray(scoped("groups_$sourceId")) { o ->
+            val ids = o.optJSONArray("ids")
+            ChannelGroup(
+                o.optString("name"),
+                if (ids == null) emptyList() else (0 until ids.length()).map { ids.optString(it) },
+            )
+        }.filter { it.name.isNotBlank() }
+
+    fun saveChannelGroups(sourceId: String, groups: List<ChannelGroup>) =
+        writeArray(scoped("groups_$sourceId"), groups) { group ->
+            JSONObject().put("name", group.name).put("ids", JSONArray(group.ids))
+        }
+
     fun loadHiddenCategories(sourceId: String): Set<String> = loadStrings(scoped("hidden_$sourceId")).toSet()
     fun saveHiddenCategories(sourceId: String, ids: Set<String>) = saveStrings(scoped("hidden_$sourceId"), ids)
 
