@@ -62,6 +62,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.arka.app.data.Downloads
+import tv.arka.app.data.Recordings
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Source
 import tv.arka.app.data.Store
@@ -76,6 +77,7 @@ private const val SECTION_SOURCES = 1
 private const val SECTION_HISTORY = 2
 private const val SECTION_SETTINGS = 3
 private const val SECTION_DOWNLOADS = 4
+private const val SECTION_RECORDINGS = 5
 
 /** Mon espace entry screen: the profile, followed series, then the sections. TV shows tiles instead of a list. */
 @Composable
@@ -120,6 +122,7 @@ private fun ProfileMenu(
         },
         MenuEntry("Historique", if (Repo.progress.isEmpty()) "vide" else "${Repo.progress.size} en cours") { onSection(SECTION_HISTORY) },
         if (kids) null else MenuEntry("Téléchargements", if (Downloads.entries.isEmpty()) "aucun" else Downloads.entries.size.toString()) { onSection(SECTION_DOWNLOADS) },
+        if (kids) null else MenuEntry("Enregistrements", if (Recordings.entries.isEmpty()) "aucun" else Recordings.entries.size.toString()) { onSection(SECTION_RECORDINGS) },
         if (kids) null else MenuEntry("Sources", Repo.sources.size.toString()) { onSection(SECTION_SOURCES) },
         if (kids) null else MenuEntry("Paramètres", "") { onSection(SECTION_SETTINGS) },
     )
@@ -253,7 +256,7 @@ fun ProfileScreen(
     var chosenSection by rememberSaveable { mutableIntStateOf(SECTION_MENU) }
     // Switching to a child profile while a protected section is open falls back to the menu.
     val protectedSection = chosenSection == SECTION_SOURCES || chosenSection == SECTION_SETTINGS ||
-        chosenSection == SECTION_DOWNLOADS
+        chosenSection == SECTION_DOWNLOADS || chosenSection == SECTION_RECORDINGS
     val section = if (Repo.activeProfile.kids && protectedSection) SECTION_MENU else chosenSection
     BackHandler(enabled = section != SECTION_MENU) { chosenSection = SECTION_MENU }
 
@@ -266,6 +269,7 @@ fun ProfileScreen(
                     SECTION_SOURCES -> "Sources"
                     SECTION_HISTORY -> "Historique"
                     SECTION_DOWNLOADS -> "Téléchargements"
+                    SECTION_RECORDINGS -> "Enregistrements"
                     else -> "Paramètres"
                 },
                 onBack = { chosenSection = SECTION_MENU },
@@ -277,6 +281,9 @@ fun ProfileScreen(
         }
         if (section == SECTION_DOWNLOADS) {
             DownloadsSection()
+        }
+        if (section == SECTION_RECORDINGS) {
+            RecordingsSection()
         }
 
         if (section == SECTION_SOURCES) {

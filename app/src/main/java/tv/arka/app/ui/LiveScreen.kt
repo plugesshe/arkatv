@@ -56,6 +56,9 @@ import tv.arka.app.data.Channel
 import tv.arka.app.data.ChannelGroup
 import tv.arka.app.data.ReplayProgram
 import androidx.compose.runtime.LaunchedEffect
+import android.content.Intent
+import tv.arka.app.MultiviewActivity
+import tv.arka.app.data.MultiviewPicks
 import tv.arka.app.data.Repo
 
 const val CATEGORY_ALL = "*all*"
@@ -304,6 +307,22 @@ fun LiveScreen() {
                 val inside = channel.id in group.ids
                 SheetOption("Groupe « ${group.name} »", inside, onClick = {
                     if (inside) Repo.removeFromGroup(group.name, channel.id) else Repo.addToGroup(group.name, channel.id)
+                })
+            }
+            // Multi-view: pick two to four channels, then launch it from this menu.
+            val picked = MultiviewPicks.channels
+            val inMultiview = picked.any { it.key == "c:" + channel.id }
+            if (inMultiview || picked.size < MultiviewPicks.MAX) {
+                SheetOption(
+                    if (inMultiview) "Retirer du multi-écran" else "Ajouter au multi-écran (${picked.size}/${MultiviewPicks.MAX})",
+                    inMultiview,
+                    onClick = { MultiviewPicks.toggle(channel.toPlayItem()) },
+                )
+            }
+            if (picked.size >= 2) {
+                SheetOption("Lancer le multi-écran (${picked.size} chaînes)", false, onClick = {
+                    menuFor = null
+                    context.startActivity(Intent(context, MultiviewActivity::class.java))
                 })
             }
             SheetOption("Nouveau groupe…", false, onClick = {

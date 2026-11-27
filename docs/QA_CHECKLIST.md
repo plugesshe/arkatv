@@ -182,3 +182,11 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Flux HLS ou chaîne en direct : l'option de téléchargement n'est pas proposée.
 - [ ] Paramètres › « Pause du direct » activée : pause de deux minutes sur une chaîne, reprise au même endroit, « Revenir au direct ».
 - [ ] Option activée : le zapping reste aussi rapide ; sinon la désactiver et le signaler.
+
+## Enregistrement et multi-écran — à vérifier sur appareil
+
+- [ ] Lecteur du direct › « Enregistrer » › 30 minutes : notification, compteur dans Mon espace › Enregistrements.
+- [ ] « Arrêter l'enregistrement » termine le fichier ; il se relit et on peut s'y déplacer.
+- [ ] Compte à une seule connexion : l'enregistrement échoue proprement avec un message.
+- [ ] Direct : ajouter deux chaînes au multi-écran puis le lancer ; les flèches changent le son, OK ouvre en plein écran.
+- [ ] Quatre chaînes : chaque tuile affiche une image ou un message d'erreur, jamais un écran figé.

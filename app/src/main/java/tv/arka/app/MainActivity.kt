@@ -71,6 +71,7 @@ import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
 import tv.arka.app.data.Downloads
+import tv.arka.app.data.Recordings
 import tv.arka.app.ui.ParentalScreen
 import tv.arka.app.ui.FocusSlot
 import tv.arka.app.ui.LocalFocusSlot
@@ -92,6 +93,7 @@ class MainActivity : ComponentActivity() {
         Repo.init(applicationContext)
         installImageLoader(applicationContext)
         Downloads.init()
+        Recordings.init()
         val television = isTelevision()
         setContent {
             ArkaTheme(isTv = television) {

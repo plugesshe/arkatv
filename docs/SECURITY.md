@@ -84,3 +84,10 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
   identifiants Xtream) n'est connue que du gestionnaire du système, jamais enregistrée par ArkaTV.
 - La pause du direct écrit le flux dans le cache de l'application, par morceaux supprimés dès qu'ils sont
   lus, avec un plafond d'un tiers de l'espace libre et de 3 Go. Tout est effacé en quittant la chaîne.
+
+## Enregistrement et multi-écran
+
+- L'enregistrement tourne dans un service au premier plan, avec une notification et un bouton d'arrêt.
+  L'adresse du flux lui est passée en mémoire et n'est écrite nulle part ; seuls le titre et le chemin du
+  fichier sont conservés.
+- Chaque chaîne enregistrée ou affichée en multi-écran ouvre sa propre connexion chez le fournisseur.

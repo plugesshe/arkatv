@@ -132,6 +132,15 @@ object Store {
         get() = p().getBoolean("live_pause", false)
         set(value) = p().edit().putBoolean("live_pause", value).apply()
 
+    fun loadRecordings(): List<RecordingEntry> = readArray("recordings") { o ->
+        RecordingEntry(o.optString("id"), o.optString("title"), o.optString("path"), o.optLong("start"), o.optLong("end"))
+    }
+
+    fun saveRecordings(list: List<RecordingEntry>) = writeArray("recordings", list) { entry ->
+        JSONObject().put("id", entry.id).put("title", entry.title).put("path", entry.path)
+            .put("start", entry.startedAt).put("end", entry.plannedEnd)
+    }
+
     fun loadDownloads(): List<DownloadEntry> = readArray("downloads") { o ->
         DownloadEntry(o.optLong("id"), o.optString("key"), o.optString("title"), o.optString("subtitle"), o.optString("poster"), o.optString("path"))
     }

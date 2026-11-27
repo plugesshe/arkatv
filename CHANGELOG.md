@@ -16,6 +16,9 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Direct
+- Enregistrement d'une chaîne en direct (MPEG-TS) depuis le lecteur : 30 minutes à 3 heures, ou jusqu'à
+  l'arrêt ; il continue application fermée. Mon espace › Enregistrements pour les relire ou les supprimer.
+- Multi-écran : deux à quatre chaînes à la fois, le son suit la chaîne sélectionnée, OK l'ouvre en plein écran.
 - Pause du direct (expérimental, à activer dans les paramètres) : en pause, la chaîne en MPEG-TS est
   conservée sur l'appareil et reprend là où elle s'est arrêtée ; « Revenir au direct » rattrape le présent.
 - Lecteur du direct : « Depuis le début » relit le programme en cours depuis son commencement quand

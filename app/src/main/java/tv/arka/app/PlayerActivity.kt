@@ -98,6 +98,7 @@ import android.widget.Toast
 import kotlinx.coroutines.MainScope
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import tv.arka.app.data.Downloads
+import tv.arka.app.data.Recordings
 import tv.arka.app.player.TimeshiftBuffer
 import tv.arka.app.player.TimeshiftDataSource
 import java.io.File
@@ -720,6 +721,10 @@ private const val PANEL_NONE = 0
 private const val PANEL_TRACKS = 1
 private const val PANEL_SETTINGS = 2
 private const val PANEL_QUEUE = 3
+private const val PANEL_RECORD = 4
+
+/** Offered recording lengths in minutes; 0 records until it is stopped. */
+private val recordingLengths = listOf(30 to "30 minutes", 60 to "1 heure", 120 to "2 heures", 180 to "3 heures", 0 to "Jusqu'à l'arrêt")
 
 private const val DRAG_NONE = 0
 private const val DRAG_SEEK = 1
@@ -1211,6 +1216,17 @@ private fun PlayerScreen(
                     Spacer(Modifier.weight(1f))
                     Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
                         if (item.live && delayed) PlayerPill("● Revenir au direct") { activity++; onBackToLive() }
+                        // Only plain MPEG-TS channels can be written to a file as they come.
+                        if (item.live && item.url.substringBefore('?').endsWith(".ts")) {
+                            if (Recordings.activeId != null) {
+                                PlayerPill("■ Arrêter l'enregistrement") {
+                                    activity++
+                                    RecordingService.stop(context.applicationContext)
+                                }
+                            } else {
+                                PlayerPill("● Enregistrer") { panel = PANEL_RECORD }
+                            }
+                        }
                         if (item.live && item.key.startsWith("c:") && Repo.active?.type == "xtream") {
                             PlayerPill("Depuis le début") { activity++; onStartOver() }
                         }
@@ -1420,6 +1436,43 @@ private fun PlayerScreen(
                         onPip()
                     })
                 }
+            }
+        }
+
+        if (panel == PANEL_RECORD && !inPip) {
+            SidePanel(Modifier.align(Alignment.CenterEnd), widthFraction = 0.36f) {
+                Text("ENREGISTRER", color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, modifier = Modifier.padding(bottom = ArkaSpacing.sm))
+                Text(
+                    item.title,
+                    color = Color.White,
+                    style = ArkaTheme.type.label,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(bottom = ArkaSpacing.sm),
+                )
+                recordingLengths.forEachIndexed { place, (minutes, label) ->
+                    FocusOnShow(tv && place == 1) {
+                        SheetOption(label, false, onClick = {
+                            val program = Repo.nowPlaying(item.epgId, now)?.title
+                            RecordingService.start(
+                                context.applicationContext,
+                                item.url,
+                                if (program != null) item.title + " · " + program else item.title,
+                                minutes,
+                            )
+                            hint = "Enregistrement lancé"
+                            hintTick++
+                            panel = PANEL_NONE
+                        })
+                    }
+                }
+                Text(
+                    "Une connexion de plus est ouverte chez votre fournisseur. Retrouvez le fichier dans Mon espace › Enregistrements.",
+                    color = ArkaColors.TextSecondary,
+                    style = ArkaTheme.type.label,
+                    fontWeight = FontWeight(400),
+                    modifier = Modifier.padding(top = ArkaSpacing.md),
+                )
             }
         }
 
