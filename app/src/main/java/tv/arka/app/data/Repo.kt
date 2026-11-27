@@ -78,6 +78,12 @@ object Repo {
     var myList by mutableStateOf(listOf<Vod>())
     var progress by mutableStateOf(listOf<Progress>())
 
+    /** Keys of the films ("m:<id>") and episodes ("e:<id>") marked as watched. */
+    var watched by mutableStateOf(setOf<String>())
+
+    /** Series the profile follows. */
+    var followed by mutableStateOf(listOf<Vod>())
+
     /** Live channel ids, most recently watched first. */
     var recentChannels by mutableStateOf(listOf<String>())
 
@@ -125,6 +131,8 @@ object Repo {
         progress = Store.loadProgress(source.id)
         recentChannels = Store.loadRecentChannels(source.id)
         hiddenCategories = Store.loadHiddenCategories(source.id)
+        watched = Store.loadWatched(source.id)
+        followed = Store.loadFollowed(source.id)
     }
 
     fun switchProfile(profile: Profile) {
@@ -578,6 +586,29 @@ object Repo {
         Store.saveMyList(source.id, myList)
     }
 
+    fun setWatched(key: String, value: Boolean) {
+        val source = active ?: return
+        watched = if (value) watched + key else watched - key
+        Store.saveWatched(source.id, watched)
+        // A title marked as watched leaves "Continuer à regarder".
+        if (value && progress.any { it.item.key == key }) {
+            progress = progress.filterNot { it.item.key == key }
+            Store.saveProgress(source.id, progress)
+        }
+    }
+
+    fun isFollowed(vod: Vod): Boolean = followed.any { it.id == vod.id }
+
+    fun toggleFollow(vod: Vod) {
+        val source = active ?: return
+        followed = if (isFollowed(vod)) followed.filterNot { it.id == vod.id } else listOf(vod) + followed
+        Store.saveFollowed(source.id, followed)
+    }
+
+    /** Other titles of the same category, most recent first. */
+    suspend fun similar(vod: Vod): List<Vod> =
+        vodRange(vod.kind, vod.categoryId, VodSort.RECENT, null, ROW_SIZE + 1, 0).filterNot { it.id == vod.id }.take(ROW_SIZE)
+
     fun progressFor(key: String): Progress? = progress.firstOrNull { it.item.key == key }
 
     fun saveProgress(item: PlayItem, position: Long, duration: Long) {
@@ -585,6 +616,11 @@ object Repo {
         if (item.live || duration <= 0) return
         progress = ProgressRules.update(progress, item, position, duration, System.currentTimeMillis())
         Store.saveProgress(source.id, progress)
+        // Reaching the end marks the title as watched.
+        if (ProgressRules.isFinished(position, duration) && item.key !in watched) {
+            watched = watched + item.key
+            Store.saveWatched(source.id, watched)
+        }
     }
 
     suspend fun details(vod: Vod): VodDetails {
@@ -612,9 +648,11 @@ object ProgressRules {
     private const val MIN_POSITION_MS = 5_000L
     private const val FINISHED_RATIO = 0.95
 
+    fun isFinished(position: Long, duration: Long): Boolean = duration > 0 && position > duration * FINISHED_RATIO
+
     fun update(current: List<Progress>, item: PlayItem, position: Long, duration: Long, now: Long): List<Progress> {
         val others = current.filterNot { it.item.key == item.key }
-        val finished = position > duration * FINISHED_RATIO
+        val finished = isFinished(position, duration)
         return if (finished || position < MIN_POSITION_MS) {
             others
         } else {

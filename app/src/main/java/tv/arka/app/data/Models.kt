@@ -48,6 +48,8 @@ data class Episode(
     val url: String,
     val plot: String,
     val image: String,
+    /** Length in minutes, 0 when the source does not say. */
+    val durationMin: Int = 0,
 )
 
 data class VodDetails(
@@ -118,4 +120,7 @@ object RecentRules {
 object PlayerSession {
     var queue: List<PlayItem> = emptyList()
     var index: Int = 0
+
+    /** True when the first item must start from the beginning instead of resuming. */
+    var startOver: Boolean = false
 }

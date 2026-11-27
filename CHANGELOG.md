@@ -64,6 +64,14 @@
   deux sens ; panneau de catégories sur Android TV.
 - Squelettes de chargement animés ; apparition des images en fondu.
 
+### Fiches film et série
+- Fiches redessinées, avec une mise en page dédiée à Android TV.
+- « Reprendre » avec le temps restant, « Recommencer », « Marquer vu » ; un titre lu jusqu'au bout est
+  marqué vu automatiquement.
+- Séries : le bouton principal propose le bon épisode (en cours, sinon premier non vu), onglets de saison,
+  durée et état de chaque épisode, « Suivre » (rangée « Séries suivies » sur l'accueil).
+- Rangée « Contenus similaires ».
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.

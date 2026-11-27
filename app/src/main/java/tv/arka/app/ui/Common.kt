@@ -105,8 +105,9 @@ fun Channel.toPlayItem(): PlayItem =
 fun Vod.toPlayItem(): PlayItem =
     PlayItem(key = "m:$id", title = name, subtitle = "", url = url, live = false, poster = poster)
 
-fun play(context: Context, queue: List<PlayItem>, index: Int) {
+fun play(context: Context, queue: List<PlayItem>, index: Int, startOver: Boolean = false) {
     if (queue.isEmpty()) return
+    PlayerSession.startOver = startOver
     PlayerSession.queue = queue
     PlayerSession.index = index.coerceIn(0, queue.lastIndex)
     context.startActivity(Intent(context, PlayerActivity::class.java))

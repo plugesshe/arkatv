@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 9).
+- Version : `0.2.0-dev` (versionCode 10).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -24,7 +24,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 53 tests, 8 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Tests unitaires | 54 tests, 8 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
 | Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
 | Films et séries lus par pages depuis la base (accueil, grilles), tris dans les grilles, position conservée au retour d'une fiche | fait, non testé sur appareil | `CatalogStore.loadSummary` / `vodPage`, `ui/CatalogGridScreen.kt`, `MainActivity.kt` |
 | Actualisation en flux : le catalogue est écrit en base au fil du téléchargement, en une transaction ; un échec laisse l'ancien catalogue intact | fait, testé unitairement, non testé sur appareil | `Repo.sync`, `CatalogStore.replaceBlocking` |
@@ -62,7 +62,7 @@ pour lecture ; aucune comparaison visuelle avec l'application n'a pu être faite
 | Écrans 1 — Choix du profil | fait : profils locaux (5 max), données séparées par profil, gestion ; sans profil enfant verrouillé |
 | Navigation | barre inférieure mobile et barre latérale TV refaites |
 | Écrans 1 — Écran de démarrage, ajout et gestion des sources | à faire |
-| Écrans 2 — Fiches film et série | à faire |
+| Écrans 2 — Fiches film et série | refait (mobile et TV) : reprise avec temps restant, recommencer, vu / non vu, suivre une série, saisons, épisodes avec durée et état, prochain épisode pertinent, contenus similaires ; sans téléchargement ni bande-annonce (inexistants) |
 | Écrans 3 — Direct et guide | à faire |
 | Écrans 4 — Lecteur | à faire |
 | Écrans 5 — Recherche et Mon espace | à faire |

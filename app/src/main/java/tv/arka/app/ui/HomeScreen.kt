@@ -136,6 +136,9 @@ fun HomeScreen(
         if (myList.isNotEmpty()) {
             item { VodRow("Ma liste", myList, onOpen) }
         }
+        if (Repo.followed.isNotEmpty()) {
+            item { VodRow("Séries suivies", Repo.followed, onOpen) }
+        }
         if (latestMovies.isNotEmpty()) {
             item {
                 VodRow("Nouveaux films", latestMovies, onOpen) {

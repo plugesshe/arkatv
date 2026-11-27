@@ -166,6 +166,13 @@ object Store {
     fun loadRecentChannels(sourceId: String): List<String> = loadStrings(scoped("recent_$sourceId"))
     fun saveRecentChannels(sourceId: String, ids: List<String>) = saveStrings(scoped("recent_$sourceId"), ids)
 
+    /** Keys ("m:<id>", "e:<id>") of the films and episodes the profile has watched. */
+    fun loadWatched(sourceId: String): Set<String> = loadStrings(scoped("watched_$sourceId")).toSet()
+    fun saveWatched(sourceId: String, keys: Set<String>) = saveStrings(scoped("watched_$sourceId"), keys)
+
+    fun loadFollowed(sourceId: String): List<Vod> = loadVods(scoped("followed_$sourceId"))
+    fun saveFollowed(sourceId: String, list: List<Vod>) = saveVods(scoped("followed_$sourceId"), list)
+
     fun loadHiddenChannels(sourceId: String): Set<String> = loadStrings(scoped("hiddench_$sourceId")).toSet()
     fun saveHiddenChannels(sourceId: String, ids: Set<String>) = saveStrings(scoped("hiddench_$sourceId"), ids)
 
@@ -213,7 +220,11 @@ object Store {
         writeBlob(scoped("fav_$sourceId"), array.toString())
     }
 
-    fun loadMyList(sourceId: String): List<Vod> = readArray(scoped("list_$sourceId")) { o ->
+    fun loadMyList(sourceId: String): List<Vod> = loadVods(scoped("list_$sourceId"))
+
+    fun saveMyList(sourceId: String, list: List<Vod>) = saveVods(scoped("list_$sourceId"), list)
+
+    private fun loadVods(key: String): List<Vod> = readArray(key) { o ->
         Vod(
             id = o.optString("id"),
             kind = if (o.optString("kind") == "SERIES") VodKind.SERIES else VodKind.MOVIE,
@@ -227,7 +238,7 @@ object Store {
         )
     }
 
-    fun saveMyList(sourceId: String, list: List<Vod>) = writeArray(scoped("list_$sourceId"), list) { v ->
+    private fun saveVods(key: String, list: List<Vod>) = writeArray(key, list) { v ->
         JSONObject().put("id", v.id).put("kind", v.kind.name).put("name", v.name).put("poster", v.poster)
             .put("cat", v.categoryId).put("url", v.url).put("rating", v.rating).put("year", v.year)
             .put("plot", v.plot)
@@ -257,7 +268,7 @@ object Store {
 
     /** Forgets a source for every profile: its lists, history, preferences and sync dates. */
     fun clearSource(sourceId: String) {
-        val perProfile = listOf("list", "progress", "fav", "recent", "hidden", "hiddench").map { "${it}_$sourceId" }
+        val perProfile = listOf("list", "progress", "fav", "recent", "hidden", "hiddench", "watched", "followed").map { "${it}_$sourceId" }
         val editor = p().edit()
         for (key in p().all.keys) {
             if (!key.startsWith("enc_")) continue

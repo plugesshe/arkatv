@@ -169,7 +169,7 @@ private fun App() {
             Screen.Discover -> DiscoverScreen(onBack = pop, onOpen = openVod)
             Screen.Profiles -> ProfilesScreen(onDone = pop)
             Screen.AddSource -> AddSourceScreen(onBack = pop, onDone = pop)
-            is Screen.Detail -> DetailScreen(screen.vod, onBack = pop)
+            is Screen.Detail -> DetailScreen(screen.vod, onBack = pop, onOpen = openVod)
             is Screen.Catalog -> CatalogGridScreen(
                 title = screen.title,
                 kind = screen.kind,

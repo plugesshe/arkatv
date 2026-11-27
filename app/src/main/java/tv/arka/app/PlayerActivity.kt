@@ -228,7 +228,9 @@ class PlayerActivity : ComponentActivity() {
             if (previous != index && queue[previous].live) lastChannelIndex = previous
             if (item.key.startsWith("c:")) Repo.recordRecentChannel(item.key.removePrefix("c:"))
         }
-        val resume = if (item.live) 0L else Repo.progressFor(item.key)?.position ?: 0L
+        val startOver = PlayerSession.startOver
+        PlayerSession.startOver = false
+        val resume = if (item.live || startOver) 0L else Repo.progressFor(item.key)?.position ?: 0L
         start(item.url, resume)
         exo.playWhenReady = true
     }

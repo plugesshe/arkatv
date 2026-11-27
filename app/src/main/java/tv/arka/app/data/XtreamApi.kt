@@ -217,7 +217,21 @@ object XtreamJson {
             url = episodeUrl(id, ext),
             plot = info?.optString("plot").orEmpty(),
             image = info?.optString("movie_image").orEmpty(),
+            durationMin = durationMinutes(info),
         )
+    }
+
+    /** Episode length from "duration_secs" (seconds) or "duration" ("HH:MM:SS"). */
+    private fun durationMinutes(info: JSONObject?): Int {
+        if (info == null) return 0
+        val seconds = info.optString("duration_secs").toIntOrNull()
+        if (seconds != null && seconds > 0) return (seconds + 30) / 60
+        val parts = info.optString("duration").split(':').mapNotNull { it.toIntOrNull() }
+        return when (parts.size) {
+            3 -> parts[0] * 60 + parts[1]
+            2 -> parts[0]
+            else -> 0
+        }
     }
 
     fun backdrop(info: JSONObject): String {

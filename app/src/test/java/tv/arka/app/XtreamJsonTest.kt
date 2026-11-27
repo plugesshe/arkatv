@@ -85,6 +85,19 @@ class XtreamJsonTest {
     }
 
     @Test
+    fun readsEpisodeDurationsInEitherForm() {
+        val root = JSONObject(
+            """{"episodes": {"1": [
+                {"id": "1", "episode_num": 1, "info": {"duration_secs": 2890}},
+                {"id": "2", "episode_num": 2, "info": {"duration": "00:51:20"}},
+                {"id": "3", "episode_num": 3, "info": {}}
+            ]}}"""
+        )
+        val episodes = XtreamJson.seriesDetails(root) { id, ext -> "$id.$ext" }.seasons.getValue(1)
+        assertEquals(listOf(48, 51, 0), episodes.map { it.durationMin })
+    }
+
+    @Test
     fun buildsStreamUrlsFromTheSource() {
         val api = XtreamApi(Source("s", "xtream", "Test", "host.test:8080/", "alice", "pw"))
         assertEquals("http://host.test:8080", api.base)

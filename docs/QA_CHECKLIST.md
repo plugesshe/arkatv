@@ -48,6 +48,14 @@ un vrai téléphone et une vraie Android TV.
       intacts pour le premier ; « Qui regarde ? » au lancement suivant ; renommer, supprimer.
 - [ ] Squelettes animés pendant le chargement des rangées et des grilles.
 
+### Fiches
+- [ ] Film entamé : « Reprendre · reste N min », barre de progression, « Recommencer » repart de zéro.
+- [ ] « Marquer vu » retire le film de « Continuer à regarder » ; un film fini passe à « Vu ».
+- [ ] Série : le bouton rouge propose l'épisode en cours, sinon le premier non vu ; onglets de saison ;
+      badge « VU », durée et temps restant par épisode ; « Suivre » ajoute la rangée « Séries suivies ».
+- [ ] « Contenus similaires » ouvre une autre fiche ; retour revient à la première.
+- [ ] TV : focus initial sur le bouton rouge ; série en deux colonnes.
+
 ### Recherche
 - [ ] « heritiers » trouve « Les Héritiers du Vent » ; deux mots dans le désordre fonctionnent.
 - [ ] Une recherche large charge la suite en faisant défiler les affiches ; « Afficher plus de chaînes ».
