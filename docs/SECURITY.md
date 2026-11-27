@@ -60,4 +60,4 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
 - Limite connue : les builds sont signés avec la clé de debug conservée dans le dépôt, donc publique. Elle
   garantit la continuité des installations, pas l'authenticité. Avant toute diffusion plus large, il faut une
   clé de production gardée dans les secrets du dépôt.
-- La publication est conditionnée à la variable de dépôt `PUBLISH_DEV_BUILDS`.
+- Chaque build vert de `claude/arkatv-excellence` est publié dans la pré-release `dev` (accord du propriétaire, 27/11/2026).

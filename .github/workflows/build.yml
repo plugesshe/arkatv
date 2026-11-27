@@ -35,10 +35,10 @@ jobs:
           path: |
             app/build/reports/
           if-no-files-found: ignore
-      # In-app updates: the app reads version.json from the "dev" pre-release. Publishing is off until
-      # the repository variable PUBLISH_DEV_BUILDS is set to "true".
+      # In-app updates: the app reads version.json from the "dev" pre-release. Publishing every green
+      # build of this branch was authorised by the repository owner on 2026-11-27.
       - name: Publish the build for in-app updates
-        if: github.ref == 'refs/heads/claude/arkatv-excellence' && vars.PUBLISH_DEV_BUILDS == 'true'
+        if: github.ref == 'refs/heads/claude/arkatv-excellence'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
