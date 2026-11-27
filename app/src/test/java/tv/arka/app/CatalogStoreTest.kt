@@ -188,6 +188,37 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun versionsCanBeFilteredAndTheBestOneRepresentsAWork() = runBlocking {
+        val versions = Catalog(
+            vodCategories = listOf(Category("c1", "Tout")),
+            movies = listOf(
+                movie("1", "VOSTFR - Dune FHD"),
+                movie("2", "FR - Dune (2021)"),
+                movie("3", "4K-D+ - Dune (2021)"),
+                movie("4", "Arrival"),
+            ),
+        )
+        store.save(xtream, versions)
+        suspend fun ids(filter: VodFilter) =
+            store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, null, 10, 0, filter).map { it.id }
+        assertEquals(listOf("2"), ids(VodFilter(language = "FR")))
+        assertEquals(listOf("1"), ids(VodFilter(language = "VOSTFR")))
+        assertEquals(listOf("3"), ids(VodFilter(quality = "4K")))
+        assertEquals(listOf("1"), ids(VodFilter(quality = "FHD")))
+        assertEquals(4, ids(VodFilter.NONE).size)
+
+        val dune = Tmdb.Match(9, "Dune", "2021", listOf(878), 80.0, 7.8, 9000, "", "", "")
+        for (id in listOf("1", "2", "3")) store.saveTmdb(xtream, VodKind.MOVIE, id, dune, 1)
+        // French first, then the best picture.
+        assertEquals(listOf("2"), store.smartPage(xtream, VodKind.MOVIE, null, VodSort.POPULAR, null, 10, 0).map { it.id })
+        assertEquals(listOf("2"), store.smartRow(xtream, VodKind.MOVIE, null, false, 10).map { it.id })
+        assertEquals(
+            listOf("3"),
+            store.smartPage(xtream, VodKind.MOVIE, null, VodSort.POPULAR, null, 10, 0, VodFilter(quality = "4K")).map { it.id },
+        )
+    }
+
+    @Test
     fun arkaOrganisationMergesVersionsAndKeepsUnmatchedTitles() = runBlocking {
         store.save(xtream, catalog)
         fun match(id: Int, title: String, popularity: Double, genres: List<Int>) =

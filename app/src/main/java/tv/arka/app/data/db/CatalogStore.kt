@@ -286,6 +286,7 @@ class CatalogStore(private val database: ArkaDatabase) {
             args.add(categoryId)
         }
         lockFilter(sql, args, kindName(kind))
+        versionFilter(sql, args, filter, "name")
         if (filter.minRating > 0) {
             sql.append(" AND CAST(rating AS REAL) >= ?")
             args.add(filter.minRating)
@@ -326,6 +327,27 @@ class CatalogStore(private val database: ArkaDatabase) {
      */
     @Volatile
     var locked: Map<String, Set<String>> = emptyMap()
+
+    /** Language and quality as the provider writes them in its titles; [column] is the name column. */
+    private fun versionFilter(sql: StringBuilder, args: MutableList<Any>, filter: VodFilter, column: String) {
+        val language = when (filter.language) {
+            "FR" -> listOf("FR %", "FR-%", "%VF%", "%FRENCH%")
+            "VOSTFR" -> listOf("%VOSTFR%")
+            "MULTI" -> listOf("%MULTI%")
+            else -> emptyList()
+        }
+        val quality = when (filter.quality) {
+            "4K" -> listOf("%4K%", "%UHD%")
+            "FHD" -> listOf("%FHD%", "%1080%")
+            "HD" -> listOf("HD %", "% HD %", "% HD", "%[HD]%", "%720%")
+            else -> emptyList()
+        }
+        for (patterns in listOf(language, quality)) {
+            if (patterns.isEmpty()) continue
+            sql.append(" AND (").append(patterns.joinToString(" OR ") { "$column LIKE ?" }).append(")")
+            args.addAll(patterns)
+        }
+    }
 
     private fun lockFilter(sql: StringBuilder, args: MutableList<Any>, kind: String) {
         val hidden = locked[kind].orEmpty().take(MAX_LOCKED)
@@ -480,10 +502,7 @@ class CatalogStore(private val database: ArkaDatabase) {
      * most popular first or best rated first, optionally of one TMDB genre.
      */
     suspend fun smartRow(source: Source, kind: VodKind, genreId: Int?, byRating: Boolean, limit: Int): List<Vod> {
-        val sql = StringBuilder(
-            "SELECT t.* FROM tmdb t JOIN vods v ON v.sourceId = t.sourceId AND v.kind = t.kind AND v.streamId = t.streamId" +
-                " WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0"
-        )
+        val sql = StringBuilder(SMART_BEST).append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
         val args = ArrayList<Any>()
         args.add(source.id)
         args.add(kindName(kind))
@@ -514,7 +533,9 @@ class CatalogStore(private val database: ArkaDatabase) {
         offset: Int,
         filter: VodFilter = VodFilter.NONE,
     ): List<Vod> {
-        val sql = StringBuilder(SMART_FROM).append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
+        // Sorting by date added already uses an aggregate, so the version shown is then unspecified.
+        val sql = StringBuilder(if (sort == VodSort.RECENT) SMART_FROM else SMART_BEST)
+            .append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
         val args = ArrayList<Any>()
         args.add(source.id)
         args.add(kindName(kind))
@@ -522,6 +543,7 @@ class CatalogStore(private val database: ArkaDatabase) {
             sql.append(" AND t.genres LIKE ?")
             args.add("%,$genreId,%")
         }
+        versionFilter(sql, args, filter, "v.name")
         if (filter.minRating > 0) {
             sql.append(" AND t.rating >= ?")
             args.add(filter.minRating)
@@ -642,8 +664,19 @@ class CatalogStore(private val database: ArkaDatabase) {
         const val BATCH = 500
         const val MAX_CATEGORY_FILTER = 50
         const val MAX_LOCKED = 400
-        const val SMART_FROM = "SELECT t.* FROM tmdb t JOIN vods v ON v.sourceId = t.sourceId AND v.kind = t.kind" +
+        private const val SMART_JOIN = " FROM tmdb t JOIN vods v ON v.sourceId = t.sourceId AND v.kind = t.kind" +
             " AND v.streamId = t.streamId"
+        const val SMART_FROM = "SELECT t.*$SMART_JOIN"
+
+        // When a work exists in several versions, the one shown is the French one, then the best
+        // picture. SQLite returns the other columns from the row that holds the maximum.
+        private const val VERSION_SCORE = "(CASE WHEN v.name LIKE 'FR %' OR v.name LIKE 'FR-%' OR v.name LIKE '%VF%'" +
+            " OR v.name LIKE '%FRENCH%' THEN 300 WHEN v.name LIKE '%MULTI%' THEN 200" +
+            " WHEN v.name LIKE '%VOSTFR%' THEN 100 ELSE 150 END" +
+            " + CASE WHEN v.name LIKE '%4K%' OR v.name LIKE '%UHD%' THEN 40" +
+            " WHEN v.name LIKE '%FHD%' OR v.name LIKE '%1080%' THEN 30" +
+            " WHEN v.name LIKE 'SD %' OR v.name LIKE '% SD' OR v.name LIKE '% SD %' THEN 10 ELSE 20 END)"
+        const val SMART_BEST = "SELECT t.*, MAX($VERSION_SCORE) AS best$SMART_JOIN"
         const val UNMATCHED_FROM = "SELECT COUNT(*) FROM vods v LEFT JOIN tmdb t ON t.sourceId = v.sourceId" +
             " AND t.kind = v.kind AND t.streamId = v.streamId"
         const val UNMATCHED_WHERE = " WHERE v.sourceId = ? AND v.kind = ? AND (t.streamId IS NULL OR t.tmdbId = 0)"

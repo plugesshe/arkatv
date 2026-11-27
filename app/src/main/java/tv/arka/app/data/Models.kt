@@ -32,8 +32,14 @@ data class VodFilter(
     val yearTo: Int = 0,
     /** Stream ids to leave out (titles already watched). */
     val excludeIds: List<String> = emptyList(),
+    /** "FR", "VOSTFR", "MULTI" or empty: read from the provider's own tags in the title. */
+    val language: String = "",
+    /** "4K", "FHD", "HD" or empty. */
+    val quality: String = "",
 ) {
-    val active: Boolean get() = minRating > 0 || yearFrom > 0 || yearTo > 0 || excludeIds.isNotEmpty()
+    val active: Boolean
+        get() = minRating > 0 || yearFrom > 0 || yearTo > 0 || excludeIds.isNotEmpty() ||
+            language.isNotEmpty() || quality.isNotEmpty()
 
     companion object {
         val NONE = VodFilter()

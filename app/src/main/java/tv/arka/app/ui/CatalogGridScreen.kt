@@ -69,6 +69,10 @@ class CatalogGridState(initialSort: VodSort = VodSort.RECENT, initialCategory: S
 
     /** Films only: leave out the ones marked as watched. */
     var unwatched by mutableStateOf(false)
+
+    /** "" (all), "FR", "VOSTFR" or "MULTI"; and "", "4K", "FHD" or "HD". */
+    var language by mutableStateOf("")
+    var quality by mutableStateOf("")
     val items = mutableStateListOf<Vod>()
     var more by mutableStateOf(false)
     var loading by mutableStateOf(true)
@@ -98,6 +102,8 @@ private fun filterOf(state: CatalogGridState, kind: VodKind): VodFilter {
         yearFrom = range.from,
         yearTo = range.to,
         excludeIds = if (state.unwatched && kind == VodKind.MOVIE) Repo.watchedMovieIds() else emptyList(),
+        language = state.language,
+        quality = state.quality,
     )
 }
 
@@ -186,11 +192,14 @@ fun CatalogGridScreen(
     var showSort by remember { mutableStateOf(false) }
     var showCategories by remember { mutableStateOf(false) }
     var showYears by remember { mutableStateOf(false) }
+    var showLanguage by remember { mutableStateOf(false) }
+    var showQuality by remember { mutableStateOf(false) }
     // Watched films are known by their stream id, which only Xtream sources provide.
     val canFilterWatched = kind == VodKind.MOVIE && Repo.active?.type == "xtream"
-    val filtered = state.topRated || state.years != 0 || (state.unwatched && canFilterWatched)
+    val filtered = state.topRated || state.years != 0 || (state.unwatched && canFilterWatched) ||
+        state.language.isNotEmpty() || state.quality.isNotEmpty()
 
-    val query = "$smart|${state.sort}|${state.descending}|${state.categoryId}|${state.topRated}|${state.years}|${state.unwatched}"
+    val query = "$smart|${state.sort}|${state.descending}|${state.categoryId}|${state.topRated}|${state.years}|${state.unwatched}|${state.language}|${state.quality}"
     val key = "${Repo.active?.id}|${Repo.catalogVersion}|$query"
 
     LaunchedEffect(key) {
@@ -237,6 +246,8 @@ fun CatalogGridScreen(
     val filterChips: @Composable () -> Unit = {
         ArkaChip("Note ≥ 7", state.topRated) { state.topRated = !state.topRated }
         ArkaChip(yearsChip, state.years != 0) { showYears = true }
+        ArkaChip("Langue : " + state.language.ifEmpty { "toutes" }, state.language.isNotEmpty()) { showLanguage = true }
+        ArkaChip("Qualité : " + state.quality.ifEmpty { "toutes" }, state.quality.isNotEmpty()) { showQuality = true }
         if (canFilterWatched) ArkaChip("Non vus", state.unwatched) { state.unwatched = !state.unwatched }
         if (smartAvailable) ArkaChip(organisationChip, smart) { switchOrganisation() }
     }
@@ -315,6 +326,8 @@ fun CatalogGridScreen(
                 item { ArkaChip(sortChip, false) { showSort = true } }
                 item { ArkaChip("Note ≥ 7", state.topRated) { state.topRated = !state.topRated } }
                 item { ArkaChip(yearsChip, state.years != 0) { showYears = true } }
+                item { ArkaChip("Langue : " + state.language.ifEmpty { "toutes" }, state.language.isNotEmpty()) { showLanguage = true } }
+                item { ArkaChip("Qualité : " + state.quality.ifEmpty { "toutes" }, state.quality.isNotEmpty()) { showQuality = true } }
                 if (smartAvailable) {
                     item { ArkaChip(organisationChip, smart) { switchOrganisation() } }
                 }
@@ -333,6 +346,8 @@ fun CatalogGridScreen(
                                     state.topRated = false
                                     state.years = 0
                                     state.unwatched = false
+                                    state.language = ""
+                                    state.quality = ""
                                 }.padding(8.dp),
                         )
                     }
@@ -359,6 +374,27 @@ fun CatalogGridScreen(
                 val down = isDescending(state)
                 SegmentButton("Décroissant", down, { state.descending = true }, Modifier.weight(1f))
                 SegmentButton("Croissant", !down, { state.descending = false }, Modifier.weight(1f))
+            }
+        }
+    }
+
+    if (showLanguage) {
+        ArkaSheet("Langue", onDismiss = { showLanguage = false }) {
+            listOf("" to "Toutes", "FR" to "Français", "VOSTFR" to "VOSTFR", "MULTI" to "Multi-langues").forEach { (value, label) ->
+                SheetOption(label, state.language == value, onClick = {
+                    state.language = value
+                    showLanguage = false
+                })
+            }
+        }
+    }
+    if (showQuality) {
+        ArkaSheet("Qualité", onDismiss = { showQuality = false }) {
+            listOf("" to "Toutes", "4K" to "4K", "FHD" to "Full HD", "HD" to "HD").forEach { (value, label) ->
+                SheetOption(label, state.quality == value, onClick = {
+                    state.quality = value
+                    showQuality = false
+                })
             }
         }
     }

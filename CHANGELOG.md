@@ -16,6 +16,10 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Catalogue enrichi (TMDB)
+- Filtres « Langue » (français, VOSTFR, multi-langues) et « Qualité » (4K, Full HD, HD) sur les pages
+  Films et Séries, dans les deux organisations.
+- Une œuvre proposée en plusieurs versions est représentée par la version française, puis par la
+  meilleure image ; les autres restent dans « Versions » sur la fiche.
 - Pages Films et Séries organisées par ArkaTV dès que des titres sont reconnus : genres TMDB à la place
   des catégories du fournisseur, versions fusionnées, tri par popularité (par défaut), note, date d'ajout,
   année ou titre. Les titres non reconnus restent accessibles dans « Non reconnus », et un bouton
