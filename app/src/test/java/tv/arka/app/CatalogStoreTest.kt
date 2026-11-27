@@ -19,6 +19,7 @@ import tv.arka.app.data.Channel
 import tv.arka.app.data.Program
 import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
+import tv.arka.app.data.Tmdb
 import tv.arka.app.data.Vod
 import tv.arka.app.data.VodFilter
 import tv.arka.app.data.VodKind
@@ -184,6 +185,44 @@ class CatalogStoreTest {
         assertEquals(listOf("Séries"), summary.seriesCategories.map { it.name })
         assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi"), summary.latestMovies.map { it.name })
         assertEquals(listOf("Ombres de Verre"), summary.latestSeries.map { it.name })
+    }
+
+    @Test
+    fun arkaOrganisationMergesVersionsAndKeepsUnmatchedTitles() = runBlocking {
+        store.save(xtream, catalog)
+        fun match(id: Int, title: String, popularity: Double, genres: List<Int>) =
+            Tmdb.Match(id, title, "2021", genres, popularity, 8.0, 500, "", "", "")
+        // Two versions of the same work, another work, and a title TMDB does not know.
+        store.saveTmdb(xtream, VodKind.MOVIE, "10", match(1, "Vent", 50.0, listOf(18)), 1)
+        store.saveTmdb(xtream, VodKind.MOVIE, "12", match(1, "Vent", 50.0, listOf(18)), 1)
+        store.saveTmdb(xtream, VodKind.MOVIE, "11", match(2, "Héritage", 90.0, listOf(28)), 1)
+        store.saveTmdb(xtream, VodKind.MOVIE, "13", null, 1)
+
+        suspend fun names(genre: Int?, sort: VodSort) =
+            store.smartPage(xtream, VodKind.MOVIE, genre, sort, null, 10, 0).map { it.name }
+        assertEquals(listOf("Héritage", "Vent"), names(null, VodSort.POPULAR))
+        assertEquals(listOf("Héritage", "Vent"), names(null, VodSort.NAME))
+        assertEquals(listOf("Vent", "Héritage"), names(null, VodSort.RECENT))
+        assertEquals(listOf("Vent"), names(18, VodSort.POPULAR))
+        assertEquals(listOf("Héritage", "Vent"), store.smartRow(xtream, VodKind.MOVIE, null, false, 10).map { it.name })
+        assertEquals(listOf("L'Héritier"), store.unmatchedPage(xtream, VodKind.MOVIE, 10, 0).map { it.name })
+
+        val counts = store.smartCounts(xtream, VodKind.MOVIE, listOf(18, 28, 35))
+        assertEquals(2, counts.total)
+        assertEquals(1, counts.unmatched)
+        assertEquals(mapOf(18 to 1, 28 to 1, 35 to 0), counts.byGenre)
+        assertEquals(2, store.variants(xtream, VodKind.MOVIE, "10").size)
+        assertTrue(store.variants(xtream, VodKind.MOVIE, "13").isEmpty())
+        assertEquals(3 to 4, store.tmdbCounts(xtream))
+
+        assertTrue(store.tmdbPending(xtream, VodKind.MOVIE, 10).isEmpty())
+        assertEquals(listOf("20"), store.tmdbPending(xtream, VodKind.SERIES, 10).map { it.streamId })
+
+        // A child profile never sees a work whose only versions are in a locked category.
+        store.locked = mapOf("movie" to setOf("c1"))
+        assertTrue(names(null, VodSort.POPULAR).isEmpty())
+        assertEquals(listOf("L'Héritier"), store.unmatchedPage(xtream, VodKind.MOVIE, 10, 0).map { it.name })
+        store.locked = emptyMap()
     }
 
     @Test

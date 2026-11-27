@@ -8,6 +8,7 @@ import tv.arka.app.data.Catalog
 import tv.arka.app.data.Category
 import tv.arka.app.data.Channel
 import tv.arka.app.data.Program
+import tv.arka.app.data.SmartCounts
 import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
@@ -308,6 +309,7 @@ class CatalogStore(private val database: ArkaDatabase) {
             VodSort.RECENT -> "addedAt $direction, pos"
             VodSort.YEAR -> "year $direction, pos"
             VodSort.RATING -> "CAST(rating AS REAL) $direction, pos"
+            VodSort.POPULAR -> "pos $direction"
         }
         sql.append(" ORDER BY ").append(order).append(" LIMIT ? OFFSET ?")
         args.add(limit)
@@ -494,7 +496,104 @@ class CatalogStore(private val database: ArkaDatabase) {
         sql.append(" GROUP BY t.tmdbId ORDER BY ").append(if (byRating) "t.rating DESC" else "t.popularity DESC")
             .append(" LIMIT ?")
         args.add(limit)
-        val matches = dao.queryTmdb(SimpleSQLiteQuery(sql.toString(), args.toTypedArray()))
+        return enrichedList(source, kind, dao.queryTmdb(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())))
+    }
+
+    /**
+     * A page of the catalogue organised by ArkaTV: matched works only, versions merged, optionally of
+     * one TMDB genre, in an order that comes from TMDB (popularity, rating, year, title) or from the
+     * date the source added the title.
+     */
+    suspend fun smartPage(
+        source: Source,
+        kind: VodKind,
+        genreId: Int?,
+        sort: VodSort,
+        descending: Boolean?,
+        limit: Int,
+        offset: Int,
+        filter: VodFilter = VodFilter.NONE,
+    ): List<Vod> {
+        val sql = StringBuilder(SMART_FROM).append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(kindName(kind))
+        if (genreId != null) {
+            sql.append(" AND t.genres LIKE ?")
+            args.add("%,$genreId,%")
+        }
+        if (filter.minRating > 0) {
+            sql.append(" AND t.rating >= ?")
+            args.add(filter.minRating)
+        }
+        if (filter.yearFrom > 0 || filter.yearTo > 0) {
+            sql.append(" AND CAST(t.year AS INTEGER) BETWEEN ? AND ?")
+            args.add(if (filter.yearFrom > 0) filter.yearFrom else 1)
+            args.add(if (filter.yearTo > 0) filter.yearTo else 9999)
+        }
+        val excluded = filter.excludeIds.take(VodFilter.MAX_EXCLUDED)
+        if (excluded.isNotEmpty()) {
+            sql.append(" AND v.streamId NOT IN (").append(excluded.joinToString(",") { "?" }).append(")")
+            args.addAll(excluded)
+        }
+        // A rating only means something with enough votes behind it.
+        if (sort == VodSort.RATING) sql.append(" AND t.votes >= 50")
+        lockFilter(sql, args, kindName(kind))
+        val direction = if (descending ?: (sort != VodSort.NAME)) "DESC" else "ASC"
+        val order = when (sort) {
+            VodSort.NAME -> "t.title COLLATE NOCASE $direction"
+            VodSort.RECENT -> "MAX(v.addedAt) $direction"
+            VodSort.YEAR -> "t.year $direction, t.popularity DESC"
+            VodSort.RATING -> "t.rating $direction, t.votes DESC"
+            VodSort.POPULAR, VodSort.PROVIDER -> "t.popularity $direction"
+        }
+        sql.append(" GROUP BY t.tmdbId ORDER BY ").append(order).append(" LIMIT ? OFFSET ?")
+        args.add(limit)
+        args.add(offset)
+        return enrichedList(source, kind, dao.queryTmdb(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())))
+    }
+
+    /** Titles TMDB does not know, or not looked up yet: shown as the source provides them, newest first. */
+    suspend fun unmatchedPage(source: Source, kind: VodKind, limit: Int, offset: Int): List<Vod> {
+        val sql = StringBuilder(UNMATCHED_FROM).append(UNMATCHED_WHERE)
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(kindName(kind))
+        lockFilter(sql, args, kindName(kind))
+        sql.append(" ORDER BY v.addedAt DESC, v.pos LIMIT ? OFFSET ?")
+        args.add(limit)
+        args.add(offset)
+        val api = apiOf(source)
+        return dao.queryVods(SimpleSQLiteQuery(sql.toString().replace("COUNT(*)", "v.*"), args.toTypedArray()))
+            .map { vodOf(it, kind, api) }
+    }
+
+    suspend fun smartCounts(source: Source, kind: VodKind, genres: List<Int>): SmartCounts {
+        suspend fun count(genreId: Int?): Int {
+            val sql = StringBuilder(
+                "SELECT COUNT(DISTINCT t.tmdbId) FROM tmdb t JOIN vods v ON v.sourceId = t.sourceId AND v.kind = t.kind" +
+                    " AND v.streamId = t.streamId WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0"
+            )
+            val args = ArrayList<Any>()
+            args.add(source.id)
+            args.add(kindName(kind))
+            if (genreId != null) {
+                sql.append(" AND t.genres LIKE ?")
+                args.add("%,$genreId,%")
+            }
+            lockFilter(sql, args, kindName(kind))
+            return dao.queryInt(SimpleSQLiteQuery(sql.toString(), args.toTypedArray()))
+        }
+        val unmatchedSql = StringBuilder(UNMATCHED_FROM).append(UNMATCHED_WHERE)
+        val unmatchedArgs = ArrayList<Any>()
+        unmatchedArgs.add(source.id)
+        unmatchedArgs.add(kindName(kind))
+        lockFilter(unmatchedSql, unmatchedArgs, kindName(kind))
+        val unmatched = dao.queryInt(SimpleSQLiteQuery(unmatchedSql.toString(), unmatchedArgs.toTypedArray()))
+        return SmartCounts(count(null), unmatched, genres.associateWith { count(it) })
+    }
+
+    private suspend fun enrichedList(source: Source, kind: VodKind, matches: List<TmdbRow>): List<Vod> {
         if (matches.isEmpty()) return emptyList()
         val ids = matches.map { it.streamId }
         val rows = dao.queryVods(
@@ -543,5 +642,10 @@ class CatalogStore(private val database: ArkaDatabase) {
         const val BATCH = 500
         const val MAX_CATEGORY_FILTER = 50
         const val MAX_LOCKED = 400
+        const val SMART_FROM = "SELECT t.* FROM tmdb t JOIN vods v ON v.sourceId = t.sourceId AND v.kind = t.kind" +
+            " AND v.streamId = t.streamId"
+        const val UNMATCHED_FROM = "SELECT COUNT(*) FROM vods v LEFT JOIN tmdb t ON t.sourceId = v.sourceId" +
+            " AND t.kind = v.kind AND t.streamId = v.streamId"
+        const val UNMATCHED_WHERE = " WHERE v.sourceId = ? AND v.kind = ? AND (t.streamId IS NULL OR t.tmdbId = 0)"
     }
 }

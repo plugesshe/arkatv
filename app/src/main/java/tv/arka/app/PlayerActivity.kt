@@ -163,6 +163,9 @@ import androidx.media3.exoplayer.SeekParameters
 /** The next episode is offered this long before the end of the one playing. */
 private const val NEXT_EPISODE_LEAD_MS = 60_000L
 
+/** Once offered, the next episode starts after this many seconds unless the card is put away. */
+private const val NEXT_EPISODE_COUNTDOWN_S = 10
+
 /** Shorter videos (trailers, clips) never show the next-episode card. */
 private const val NEXT_EPISODE_MIN_DURATION_MS = 180_000L
 
@@ -693,6 +696,7 @@ private fun PlayerScreen(
     // The next episode is offered one minute before the end; Back or "Masquer" puts the card away.
     var nextDismissed by remember(item.key) { mutableStateOf(false) }
     var seekFlash by remember { mutableStateOf(false) }
+    var nextCountdown by remember(item.key) { mutableIntStateOf(NEXT_EPISODE_COUNTDOWN_S) }
     var showStats by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -731,6 +735,20 @@ private fun PlayerScreen(
         if (overlay && panel == PANEL_NONE && error == null && playing) {
             delay(if (tv) 5000 else 3000)
             onOverlay(false)
+        }
+    }
+    // The card counts ten seconds down, then skips the end credits. It waits while paused, and
+    // "Masquer" or Back lets the episode run to its end, where the next one starts anyway.
+    LaunchedEffect(nextVisible, playing, item.key) {
+        if (nextVisible && playing) {
+            while (nextCountdown > 0) {
+                delay(1000)
+                nextCountdown--
+            }
+            onNext()
+        } else if (!nextVisible) {
+            // Put away, or the viewer went back: the next time it shows, it counts from ten again.
+            nextCountdown = NEXT_EPISODE_COUNTDOWN_S
         }
     }
     LaunchedEffect(seekTick) {
@@ -1188,7 +1206,6 @@ private fun PlayerScreen(
         }
 
         if (nextVisible && nextItem != null) {
-            val remaining = ((duration - position) / 1000).coerceAtLeast(0)
             Row(
                 Modifier.align(Alignment.BottomEnd)
                     .padding(end = if (tv) ArkaSize.tvOverscan else ArkaSpacing.xl, bottom = if (controls) 120.dp else ArkaSpacing.xl)
@@ -1200,7 +1217,7 @@ private fun PlayerScreen(
                     if (nextItem.poster.isNotBlank()) ArkaImage(nextItem.poster, Modifier.fillMaxSize())
                 }
                 Column(Modifier.padding(start = ArkaSpacing.md)) {
-                    Text("Épisode suivant dans $remaining s", color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono)
+                    Text("Épisode suivant dans $nextCountdown s", color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono)
                     Text(
                         nextItem.subtitle.ifBlank { nextItem.title },
                         color = Color.White,

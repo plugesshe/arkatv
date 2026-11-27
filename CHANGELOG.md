@@ -16,6 +16,11 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Catalogue enrichi (TMDB)
+- Pages Films et Séries organisées par ArkaTV dès que des titres sont reconnus : genres TMDB à la place
+  des catégories du fournisseur, versions fusionnées, tri par popularité (par défaut), note, date d'ajout,
+  année ou titre. Les titres non reconnus restent accessibles dans « Non reconnus », et un bouton
+  « Organisation » rétablit les catégories du fournisseur sur la page.
+- « Tout » sur les rangées d'ArkaTV ouvre le genre correspondant.
 - Avec la clé TMDB de l'utilisateur (saisie dans l'app, chiffrée, jamais dans le dépôt ni dans l'APK) :
   reconnaissance des films et séries en arrière-plan, les plus récents d'abord.
 - Accueil organisé par ArkaTV : films et séries du moment, mieux notés, rangées par genre, une seule
@@ -58,6 +63,8 @@
 - Affiches gardées sur disque, sans fondu sur TV.
 
 ### Lecteur
+- Épisode suivant : la carte apparaît une minute avant la fin, compte dix secondes puis passe à
+  l'épisode suivant ; « Masquer » ou Retour laisse l'épisode aller jusqu'au bout.
 - Épisode suivant proposé une minute avant la fin (« Lire maintenant » ou « Masquer »), enchaînement
   automatique à la fin.
 - Téléphone : verrouillage de l'écran, et deux doigts pour remplir l'écran ou revenir à l'image entière.

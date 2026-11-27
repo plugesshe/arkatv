@@ -41,7 +41,7 @@ data class VodFilter(
     }
 }
 
-enum class VodSort { PROVIDER, NAME, RECENT, YEAR, RATING }
+enum class VodSort { PROVIDER, NAME, RECENT, YEAR, RATING, POPULAR }
 
 data class Vod(
     val id: String,
@@ -61,7 +61,17 @@ data class Vod(
 )
 
 /** A home row built by ArkaTV from matched titles, instead of a provider category. */
-class SmartRow(val title: String, val items: List<Vod>)
+class SmartRow(
+    val title: String,
+    val items: List<Vod>,
+    val kind: VodKind,
+    /** "g:<TMDB genre id>" or null: where "Tout" leads in the catalogue. */
+    val categoryId: String?,
+    val sort: VodSort,
+)
+
+/** Number of works per TMDB genre for one kind, merged versions counted once. */
+class SmartCounts(val total: Int, val unmatched: Int, val byGenre: Map<Int, Int>)
 
 data class Episode(
     val id: String,

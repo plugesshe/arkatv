@@ -162,7 +162,9 @@ fun HomeScreen(
             }
         }
         items(smartRows) { row ->
-            VodRow(row.title, row.items, onOpen)
+            VodRow(row.title, row.items, onOpen) {
+                onCatalog(row.title, row.kind, row.categoryId, row.sort)
+            }
         }
         // The provider's categories stay on the home screen until ArkaTV has enough rows of its own;
         // they remain available at any time from Films and Séries.

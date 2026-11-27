@@ -103,6 +103,49 @@ object Repo {
     /** Home rows built from matched titles; empty until enough of them are known. */
     var smartRows by mutableStateOf(listOf<SmartRow>())
 
+    /** TMDB genres with their number of works, for the Films and Séries pages; empty until titles are matched. */
+    var smartMovieGenres by mutableStateOf(listOf<Pair<Category, Int>>())
+    var smartSeriesGenres by mutableStateOf(listOf<Pair<Category, Int>>())
+    var smartMovieTotal by mutableIntStateOf(0)
+    var smartSeriesTotal by mutableIntStateOf(0)
+
+    /** A page of the catalogue organised by ArkaTV. [categoryId] is "g:<genre>" ("g:-1": not recognised) or null. */
+    suspend fun smartPage(
+        kind: VodKind,
+        categoryId: String?,
+        sort: VodSort,
+        descending: Boolean?,
+        offset: Int,
+        filter: VodFilter = VodFilter.NONE,
+    ): List<Vod> {
+        val source = active ?: return emptyList()
+        val catalogStore = store ?: return emptyList()
+        val genre = categoryId?.removePrefix("g:")?.toIntOrNull()
+        return withContext(Dispatchers.IO) {
+            try {
+                if (genre == UNMATCHED_GENRE) {
+                    catalogStore.unmatchedPage(source, kind, GRID_PAGE, offset)
+                } else {
+                    catalogStore.smartPage(source, kind, genre, sort, descending, GRID_PAGE, offset, filter)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    const val UNMATCHED_GENRE = -1
+
+    private fun genreList(genres: List<Pair<Int, String>>, counts: SmartCounts): List<Pair<Category, Int>> {
+        val list = genres.mapNotNull { (id, name) ->
+            val count = counts.byGenre[id] ?: 0
+            if (count > 0) Category("g:$id", name) to count else null
+        }
+        return if (counts.unmatched > 0) list + (Category("g:$UNMATCHED_GENRE", "Non reconnus") to counts.unmatched) else list
+    }
+
     /** Popular matched titles that have a wide picture, for the home hero. */
     var heroPicks by mutableStateOf(listOf<Vod>())
     private var tmdbJob: Job? = null
@@ -116,6 +159,8 @@ object Repo {
         if (clean.isEmpty()) {
             smartRows = emptyList()
             heroPicks = emptyList()
+            smartMovieGenres = emptyList()
+            smartSeriesGenres = emptyList()
         } else {
             startEnrichment()
         }
@@ -196,25 +241,35 @@ object Repo {
             val built = withContext(Dispatchers.IO) {
                 val counts = catalogStore.tmdbCounts(source)
                 val rows = ArrayList<SmartRow>()
-                fun add(title: String, items: List<Vod>) {
-                    if (items.size >= SMART_ROW_MIN) rows.add(SmartRow(title, items))
+                fun add(title: String, items: List<Vod>, kind: VodKind, genreId: Int?, sort: VodSort) {
+                    if (items.size >= SMART_ROW_MIN) rows.add(SmartRow(title, items, kind, genreId?.let { "g:$it" }, sort))
                 }
                 val trendingMovies = catalogStore.smartRow(source, VodKind.MOVIE, null, false, SMART_ROW_SIZE)
                 val trendingSeries = catalogStore.smartRow(source, VodKind.SERIES, null, false, SMART_ROW_SIZE)
-                add("Films du moment", trendingMovies)
-                add("Séries du moment", trendingSeries)
-                add("Films les mieux notés", catalogStore.smartRow(source, VodKind.MOVIE, null, true, SMART_ROW_SIZE))
-                add("Séries les mieux notées", catalogStore.smartRow(source, VodKind.SERIES, null, true, SMART_ROW_SIZE))
-                for ((id, name) in Tmdb.movieGenres) add(name, catalogStore.smartRow(source, VodKind.MOVIE, id, false, SMART_ROW_SIZE))
-                for ((id, name) in Tmdb.seriesGenres) add(name, catalogStore.smartRow(source, VodKind.SERIES, id, false, SMART_ROW_SIZE))
+                add("Films du moment", trendingMovies, VodKind.MOVIE, null, VodSort.POPULAR)
+                add("Séries du moment", trendingSeries, VodKind.SERIES, null, VodSort.POPULAR)
+                add("Films les mieux notés", catalogStore.smartRow(source, VodKind.MOVIE, null, true, SMART_ROW_SIZE), VodKind.MOVIE, null, VodSort.RATING)
+                add("Séries les mieux notées", catalogStore.smartRow(source, VodKind.SERIES, null, true, SMART_ROW_SIZE), VodKind.SERIES, null, VodSort.RATING)
+                for ((id, name) in Tmdb.movieGenres) {
+                    add(name, catalogStore.smartRow(source, VodKind.MOVIE, id, false, SMART_ROW_SIZE), VodKind.MOVIE, id, VodSort.POPULAR)
+                }
+                for ((id, name) in Tmdb.seriesGenres) {
+                    add(name, catalogStore.smartRow(source, VodKind.SERIES, id, false, SMART_ROW_SIZE), VodKind.SERIES, id, VodSort.POPULAR)
+                }
+                val movieCounts = catalogStore.smartCounts(source, VodKind.MOVIE, Tmdb.movieGenres.map { it.first })
+                val seriesCounts = catalogStore.smartCounts(source, VodKind.SERIES, Tmdb.seriesGenres.map { it.first })
                 val hero = ArrayList<Vod>()
                 for (i in 0 until 4) {
                     trendingSeries.filter { it.backdrop.isNotBlank() }.getOrNull(i)?.let(hero::add)
                     trendingMovies.filter { it.backdrop.isNotBlank() }.getOrNull(i)?.let(hero::add)
                 }
-                Triple(rows, hero.take(5), counts)
+                SmartBuild(rows, hero.take(5), counts, movieCounts, seriesCounts)
             }
             if (active?.id == source.id && tmdbToken.isNotBlank()) {
+                smartMovieGenres = genreList(Tmdb.movieGenres, built.movies)
+                smartSeriesGenres = genreList(Tmdb.seriesGenreNames, built.series)
+                smartMovieTotal = built.movies.total + built.movies.unmatched
+                smartSeriesTotal = built.series.total + built.series.unmatched
                 smartRows = built.first
                 heroPicks = built.second
                 tmdbMatched = built.third.first
@@ -242,6 +297,14 @@ object Repo {
             }
         }
     }
+
+    private class SmartBuild(
+        val first: List<SmartRow>,
+        val second: List<Vod>,
+        val third: Pair<Int, Int>,
+        val movies: SmartCounts,
+        val series: SmartCounts,
+    )
 
     private const val TMDB_BATCH = 20
     private const val TMDB_PAUSE_MS = 280L
@@ -450,6 +513,8 @@ object Repo {
             tmdbJob?.cancel()
             smartRows = emptyList()
             heroPicks = emptyList()
+            smartMovieGenres = emptyList()
+            smartSeriesGenres = emptyList()
         }
     }
 

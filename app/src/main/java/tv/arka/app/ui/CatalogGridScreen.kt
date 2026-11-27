@@ -57,6 +57,10 @@ class CatalogGridState(initialSort: VodSort = VodSort.RECENT, initialCategory: S
     var descending by mutableStateOf<Boolean?>(null)
     var categoryId by mutableStateOf(initialCategory)
 
+    /** True when the user asked for the provider's own categories and order on this page. */
+    var providerMode by mutableStateOf(false)
+    internal var smartDefaultApplied = false
+
     /** Only titles rated 7 or more by the source. */
     var topRated by mutableStateOf(false)
 
@@ -104,7 +108,16 @@ private val sortOptions = listOf(
     VodSort.RATING to "Note",
 )
 
+private val smartSortOptions = listOf(
+    VodSort.POPULAR to "Popularité",
+    VodSort.RATING to "Note",
+    VodSort.RECENT to "Date d'ajout",
+    VodSort.YEAR to "Année",
+    VodSort.NAME to "Alphabétique (A → Z)",
+)
+
 private fun sortLabel(sort: VodSort): String = when (sort) {
+    VodSort.POPULAR -> "Popularité"
     VodSort.RECENT -> "Date d'ajout"
     VodSort.NAME -> "Alphabétique"
     VodSort.YEAR -> "Année"
@@ -129,9 +142,46 @@ fun CatalogGridScreen(
 ) {
     val tv = LocalIsTv.current
     val scope = rememberCoroutineScope()
-    val categories = if (kind == VodKind.MOVIE) Repo.vodCategories else Repo.seriesCategories
-    val counts = if (kind == VodKind.MOVIE) Repo.movieCategoryCounts else Repo.seriesCategoryCounts
-    val total = if (kind == VodKind.MOVIE) Repo.movieCount else Repo.seriesCount
+    // Organised by ArkaTV when titles have been matched with TMDB: genres instead of the provider's
+    // categories, versions merged, popularity first. A provider category opened from elsewhere, or
+    // the user's choice, keeps the provider's organisation.
+    val smartGenres = if (kind == VodKind.MOVIE) Repo.smartMovieGenres else Repo.smartSeriesGenres
+    val smartAvailable = Repo.smartHome && Repo.tmdbToken.isNotBlank() && smartGenres.isNotEmpty()
+    val providerCategory = state.categoryId?.let { !it.startsWith("g:") } ?: false
+    val smart = smartAvailable && !state.providerMode && !providerCategory
+    if (smart && !state.smartDefaultApplied) {
+        state.smartDefaultApplied = true
+        if (state.sort == VodSort.RECENT && state.categoryId == null) state.sort = VodSort.POPULAR
+    }
+    val categories = when {
+        smart -> smartGenres.map { it.first }
+        kind == VodKind.MOVIE -> Repo.vodCategories
+        else -> Repo.seriesCategories
+    }
+    val counts = when {
+        smart -> smartGenres.associate { it.first.id to it.second }
+        kind == VodKind.MOVIE -> Repo.movieCategoryCounts
+        else -> Repo.seriesCategoryCounts
+    }
+    val total = when {
+        smart -> if (kind == VodKind.MOVIE) Repo.smartMovieTotal else Repo.smartSeriesTotal
+        kind == VodKind.MOVIE -> Repo.movieCount
+        else -> Repo.seriesCount
+    }
+    val page: suspend (Int) -> List<Vod> = { offset ->
+        if (smart) {
+            Repo.smartPage(kind, state.categoryId, state.sort, state.descending, offset, filterOf(state, kind))
+        } else {
+            Repo.vodPage(kind, state.categoryId, state.sort, state.descending, offset, filterOf(state, kind))
+        }
+    }
+    val switchOrganisation = {
+        state.providerMode = smart
+        state.categoryId = null
+        state.sort = if (smart) VodSort.RECENT else VodSort.POPULAR
+        state.descending = null
+    }
+    val organisationChip = if (smart) "Organisation : ArkaTV" else "Organisation : fournisseur"
     val category = categories.firstOrNull { it.id == state.categoryId }
     var showSort by remember { mutableStateOf(false) }
     var showCategories by remember { mutableStateOf(false) }
@@ -140,14 +190,14 @@ fun CatalogGridScreen(
     val canFilterWatched = kind == VodKind.MOVIE && Repo.active?.type == "xtream"
     val filtered = state.topRated || state.years != 0 || (state.unwatched && canFilterWatched)
 
-    val query = "${state.sort}|${state.descending}|${state.categoryId}|${state.topRated}|${state.years}|${state.unwatched}"
+    val query = "$smart|${state.sort}|${state.descending}|${state.categoryId}|${state.topRated}|${state.years}|${state.unwatched}"
     val key = "${Repo.active?.id}|${Repo.catalogVersion}|$query"
 
     LaunchedEffect(key) {
         if (state.loadedKey == key) return@LaunchedEffect
         state.token++
         state.loading = true
-        val first = Repo.vodPage(kind, state.categoryId, state.sort, state.descending, 0, filterOf(state, kind))
+        val first = page(0)
         val queryChanged = state.loadedQuery != null && state.loadedQuery != query
         state.items.clear()
         state.items.addAll(first)
@@ -165,7 +215,7 @@ fun CatalogGridScreen(
         val mine = state.token
         scope.launch {
             try {
-                val next = Repo.vodPage(kind, state.categoryId, state.sort, state.descending, state.items.size, filterOf(state, kind))
+                val next = page(state.items.size)
                 if (mine == state.token) {
                     state.items.addAll(next)
                     state.more = next.size == Repo.GRID_PAGE
@@ -188,6 +238,7 @@ fun CatalogGridScreen(
         ArkaChip("Note ≥ 7", state.topRated) { state.topRated = !state.topRated }
         ArkaChip(yearsChip, state.years != 0) { showYears = true }
         if (canFilterWatched) ArkaChip("Non vus", state.unwatched) { state.unwatched = !state.unwatched }
+        if (smartAvailable) ArkaChip(organisationChip, smart) { switchOrganisation() }
     }
     val sortChip = "Tri : " + sortLabel(state.sort) + if (isDescending(state)) " ↓" else " ↑"
 
@@ -264,6 +315,9 @@ fun CatalogGridScreen(
                 item { ArkaChip(sortChip, false) { showSort = true } }
                 item { ArkaChip("Note ≥ 7", state.topRated) { state.topRated = !state.topRated } }
                 item { ArkaChip(yearsChip, state.years != 0) { showYears = true } }
+                if (smartAvailable) {
+                    item { ArkaChip(organisationChip, smart) { switchOrganisation() } }
+                }
                 if (canFilterWatched) {
                     item { ArkaChip("Non vus", state.unwatched) { state.unwatched = !state.unwatched } }
                 }
@@ -290,7 +344,7 @@ fun CatalogGridScreen(
 
     if (showSort) {
         ArkaSheet("Trier par", onDismiss = { showSort = false }) {
-            sortOptions.forEach { (sort, label) ->
+            (if (smart) smartSortOptions else sortOptions).forEach { (sort, label) ->
                 SheetOption(label, state.sort == sort, onClick = {
                     if (state.sort != sort) {
                         state.sort = sort

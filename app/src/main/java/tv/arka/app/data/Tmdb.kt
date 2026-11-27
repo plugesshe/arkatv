@@ -40,6 +40,12 @@ object Tmdb {
         16 to "Séries d'animation", 9648 to "Séries à mystère", 99 to "Séries documentaires",
     )
 
+    /** The same series genres under the short names used on the Séries page. */
+    val seriesGenreNames = listOf(
+        18 to "Drame", 35 to "Comédie", 10759 to "Action et aventure", 10765 to "Science-fiction et fantastique",
+        80 to "Crime", 16 to "Animation", 9648 to "Mystère", 99 to "Documentaires",
+    )
+
     /** One request, and a second one without the year when the year gave nothing. */
     fun search(token: String, movie: Boolean, title: String, year: String): Match? {
         val first = parseSearch(request(token, movie, title, year), movie, title, year)
