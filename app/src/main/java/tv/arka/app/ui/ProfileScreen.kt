@@ -66,6 +66,7 @@ import java.util.UUID
 fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (String, List<Vod>) -> Unit) {
     var liveFormat by remember { mutableStateOf(Store.liveFormat) }
     var toDelete by remember { mutableStateOf<Source?>(null) }
+    var refreshHours by remember { mutableIntStateOf(Store.catalogRefreshHours) }
     var toEdit by remember { mutableStateOf<Source?>(null) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -177,6 +178,30 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (Strin
         }
         Text(
             "Si une chaîne ne démarre pas, l'autre format est essayé automatiquement.",
+            color = ArkaMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+
+        Text(
+            "Actualisation automatique du catalogue",
+            fontSize = 14.sp,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+        )
+        Row(
+            Modifier.padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            listOf(6 to "6 h", 12 to "12 h", 24 to "24 h", 0 to "Jamais").forEach { (hours, label) ->
+                ArkaChip(label, refreshHours == hours) {
+                    refreshHours = hours
+                    Store.catalogRefreshHours = hours
+                }
+            }
+        }
+        Text(
+            "Vérifiée à l'ouverture de l'application, jamais en arrière-plan. " +
+                "L'actualisation manuelle reste toujours possible.",
             color = ArkaMuted,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 16.dp),

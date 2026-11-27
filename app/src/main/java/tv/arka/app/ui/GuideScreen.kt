@@ -75,8 +75,10 @@ fun GuideScreen() {
     val favorites = Repo.favorites
     val recent = Repo.recentChannels
     val hidden = Repo.hiddenCategories
-    val list = remember(channels, category, favorites, recent, hidden) {
-        channelsFor(category, channels, favorites, recent, hidden)
+    val hiddenChannels = Repo.hiddenChannels
+    val favoriteOrder = Repo.favoriteOrder
+    val list = remember(channels, category, favoriteOrder, recent, hidden, hiddenChannels) {
+        channelsFor(category, channels, favoriteOrder, recent, hidden, hiddenChannels)
     }
     val now = rememberNow()
     val start = remember { (System.currentTimeMillis() / 1000 - 1800) / 1800 * 1800 }

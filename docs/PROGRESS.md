@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 6).
+- Version : `0.2.0-dev` (versionCode 7).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -24,13 +24,16 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 44 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Tests unitaires | 48 tests, 8 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
 | Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
 | Films et séries lus par pages depuis la base (accueil, grilles), tris dans les grilles, position conservée au retour d'une fiche | fait, non testé sur appareil | `CatalogStore.loadSummary` / `vodPage`, `ui/CatalogGridScreen.kt`, `MainActivity.kt` |
 | Actualisation en flux : le catalogue est écrit en base au fil du téléchargement, en une transaction ; un échec laisse l'ancien catalogue intact | fait, testé unitairement, non testé sur appareil | `Repo.sync`, `CatalogStore.replaceBlocking` |
 | Lecteur : vitesse, compte à rebours avant l'épisode suivant, programme suivant en direct, erreurs avec actions, infos techniques, chaîne précédente | fait, non testé sur appareil | `PlayerActivity.kt` |
 | Direct : chaînes récentes, masquage de groupes, numéros de chaîne | fait, non testé sur appareil | `ui/LiveScreen.kt`, `Repo` |
 | Sources : expiration et connexions du compte Xtream, renommer, réordonner | fait, non testé sur appareil | `ui/ProfileScreen.kt`, `XtreamJson.accountInfo` |
+| Lecteur : sélecteur d'épisodes et de chaînes, choix de la qualité quand le flux en propose plusieurs | fait, non testé sur appareil | `PlayerActivity.kt` |
+| Direct : masquage chaîne par chaîne, ordre des favoris (appui long sur une chaîne) | fait, non testé sur appareil | `ui/LiveScreen.kt`, `Repo` |
+| Sources : fréquence d'actualisation automatique (6 h, 12 h, 24 h, jamais) | fait, non testé sur appareil | `ui/ProfileScreen.kt`, `Store.catalogRefreshHours` |
 | Recherche sur le catalogue stocké : sans accents, classée, paginée, historique local | fait, non testé sur appareil | `data/TextNormalizer.kt`, `CatalogStore.search*`, `ui/SearchScreen.kt` |
 | Lint et tests en CI, « latest » protégée | fait | `.github/workflows/build.yml` |
 
@@ -44,6 +47,16 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 5. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
 6. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
 
+## Ce qui attend les maquettes ou un appareil
+
+- Interface Android TV dédiée, refonte des écrans, assistant d'ajout de source, logo définitif.
+- Textes en ressources français/anglais (à faire pendant la refonte, les libellés vont changer).
+- Groupes de chaînes personnalisés et réorganisation libre de toutes les chaînes : demandent un écran
+  d'édition à concevoir.
+- Actualisation en arrière-plan quand l'application est fermée (WorkManager) : volontairement non faite,
+  l'actualisation n'a lieu qu'à l'ouverture.
+- Mesures de performance et toute la validation manuelle.
+
 ## Décisions prises
 
 - **Un seul module Gradle** pour l'instant : le découpage `core:*` / `feature:*` attendra la séparation
@@ -54,7 +67,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
   l'URL de chaque entrée M3U resterait trop lent autrement.
 - **Les URLs Xtream ne sont pas stockées** en base : elles sont reconstruites depuis la source, ce qui
   évite de dupliquer les identifiants et rend le changement de format instantané.
-- **Durées de validité** : catalogue 12 h, guide 6 h. Non configurables pour l'instant.
+- **Durées de validité** : catalogue réglable (6 h, 12 h par défaut, 24 h, jamais), guide 6 h.
 - **Recherche par `LIKE` sur une colonne normalisée** plutôt que FTS : suffisant pour des noms courts,
   sans index à maintenir, et vérifiable par des tests sur base en mémoire. À réévaluer par la mesure sur
   une source de 100 000 titres.

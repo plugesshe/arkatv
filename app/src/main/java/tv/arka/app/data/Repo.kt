@@ -23,7 +23,6 @@ import java.io.IOException
  * All state writes happen on the main thread.
  */
 object Repo {
-    private const val CATALOG_TTL_MS = 12 * 3600 * 1000L
     private const val EPG_TTL_MS = 6 * 3600 * 1000L
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -62,6 +61,12 @@ object Repo {
     var epg by mutableStateOf(mapOf<String, List<Program>>())
 
     var favorites by mutableStateOf(setOf<String>())
+
+    /** The same favourites, in the order chosen by the user. */
+    var favoriteOrder by mutableStateOf(listOf<String>())
+
+    /** Live channel ids the user chose to hide. */
+    var hiddenChannels by mutableStateOf(setOf<String>())
     var myList by mutableStateOf(listOf<Vod>())
     var progress by mutableStateOf(listOf<Progress>())
 
@@ -95,7 +100,9 @@ object Repo {
     fun select(source: Source) {
         active = source
         Store.activeSourceId = source.id
-        favorites = Store.loadFavorites(source.id)
+        favoriteOrder = Store.loadFavoriteOrder(source.id)
+        favorites = favoriteOrder.toSet()
+        hiddenChannels = Store.loadHiddenChannels(source.id)
         myList = Store.loadMyList(source.id)
         progress = Store.loadProgress(source.id)
         recentChannels = Store.loadRecentChannels(source.id)
@@ -203,7 +210,8 @@ object Repo {
             loading = !hasCache
 
             // 2. Refresh from the provider when asked, when nothing is cached, or when stale.
-            if (force || !hasCache || now - lastSync > CATALOG_TTL_MS) {
+            val refreshAfter = Store.catalogRefreshHours * 3600 * 1000L
+            if (force || !hasCache || (refreshAfter > 0 && now - lastSync > refreshAfter)) {
                 refreshing = hasCache
                 try {
                     val result = sync(source, catalogStore)
@@ -437,8 +445,33 @@ object Repo {
 
     fun toggleFavorite(channelId: String) {
         val source = active ?: return
-        favorites = if (channelId in favorites) favorites - channelId else favorites + channelId
-        Store.saveFavorites(source.id, favorites)
+        favoriteOrder = if (channelId in favorites) favoriteOrder - channelId else favoriteOrder + channelId
+        favorites = favoriteOrder.toSet()
+        Store.saveFavorites(source.id, favoriteOrder)
+    }
+
+    /** Moves a favourite up (negative [delta]) or down in the favourites list. */
+    fun moveFavorite(channelId: String, delta: Int) {
+        val source = active ?: return
+        val from = favoriteOrder.indexOf(channelId)
+        val to = from + delta
+        if (from < 0 || to < 0 || to > favoriteOrder.lastIndex) return
+        val list = favoriteOrder.toMutableList()
+        list.add(to, list.removeAt(from))
+        favoriteOrder = list
+        Store.saveFavorites(source.id, favoriteOrder)
+    }
+
+    fun setChannelHidden(channelId: String, hidden: Boolean) {
+        val source = active ?: return
+        hiddenChannels = if (hidden) hiddenChannels + channelId else hiddenChannels - channelId
+        Store.saveHiddenChannels(source.id, hiddenChannels)
+    }
+
+    fun showAllChannels() {
+        val source = active ?: return
+        hiddenChannels = emptySet()
+        Store.saveHiddenChannels(source.id, hiddenChannels)
     }
 
     fun inMyList(vod: Vod): Boolean = myList.any { it.id == vod.id && it.kind == vod.kind }

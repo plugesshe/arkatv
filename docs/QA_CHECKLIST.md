@@ -56,6 +56,11 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Masquer un groupe : il disparaît des puces et de « Toutes » ; le réafficher.
 - [ ] Source Xtream : date d'expiration et connexions affichées après une actualisation.
 - [ ] Renommer une source, la monter et la descendre dans la liste.
+- [ ] Appui long sur une chaîne (tactile, puis OK maintenu à la télécommande) : favori, monter/descendre
+      dans les favoris, masquer ; « Gérer les groupes » permet de réafficher les chaînes masquées.
+- [ ] Lecteur : « Épisodes » et « Chaînes » ouvrent la liste sur l'élément en cours et changent de contenu.
+- [ ] Lecteur : « Qualité » n'apparaît que sur un flux à plusieurs qualités ; « Automatique » y revient.
+- [ ] Actualisation automatique sur « Jamais » : pas de rechargement à l'ouverture ; le bouton manuel marche.
 
 ### Android TV
 - [ ] Toutes les cartes et lignes montrent un contour au focus.

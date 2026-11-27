@@ -31,13 +31,17 @@
 - En direct : programme en cours avec avancement, programme suivant, retour à la chaîne précédente.
 - Messages d'erreur compréhensibles avec Réessayer, Chaîne suivante et Fermer.
 - Panneau d'infos techniques (codec, résolution, débit, tampon, images perdues).
+- Sélecteur d'épisodes (ou de chaînes en direct) dans le lecteur.
+- Choix de la qualité quand le flux en propose plusieurs.
 
 ### Direct
 - Groupe « Récentes », masquage des groupes inutiles, numéro de chaîne affiché.
+- Appui long sur une chaîne : favori, ordre dans les favoris, masquer la chaîne.
 
 ### Sources
 - Date d'expiration et connexions du compte Xtream.
 - Renommer et réordonner les sources.
+- Fréquence d'actualisation automatique réglable (6 h, 12 h, 24 h, jamais).
 
 ### Interface
 - Nouvelle palette et tokens de design centralisés.

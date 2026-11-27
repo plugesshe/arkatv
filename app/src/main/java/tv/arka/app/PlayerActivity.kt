@@ -24,12 +24,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.FormatListBulleted
 import androidx.compose.material.icons.filled.Forward10
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
@@ -187,6 +191,9 @@ class PlayerActivity : ComponentActivity() {
                     player = exo,
                     item = queue[index],
                     nextItem = queue.getOrNull(index + 1),
+                    queue = queue,
+                    index = index,
+                    onSelect = { load(it) },
                     hasQueue = queue.size > 1,
                     hasLastChannel = lastChannelIndex in queue.indices && lastChannelIndex != index,
                     overlay = overlay && !inPip,
@@ -384,6 +391,36 @@ private fun selectTrack(player: Player, type: Int, option: TrackOption?) {
     player.trackSelectionParameters = builder.build()
 }
 
+/** Video qualities carried by the stream itself (adaptive streams), best first. */
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun videoOptions(player: Player): List<TrackOption> {
+    val options = ArrayList<Pair<Int, TrackOption>>()
+    for (group in player.currentTracks.groups) {
+        if (group.type != C.TRACK_TYPE_VIDEO) continue
+        for (i in 0 until group.length) {
+            if (!group.isTrackSupported(i)) continue
+            val format = group.getTrackFormat(i)
+            val label = listOfNotNull(
+                if (format.height > 0) "${format.height}p" else null,
+                if (format.bitrate > 0) "${format.bitrate / 1000} kb/s" else null,
+            ).joinToString(" · ").ifBlank { "Piste ${options.size + 1}" }
+            options.add(format.height to TrackOption(label, group, i, group.isTrackSelected(i)))
+        }
+    }
+    return options.sortedByDescending { it.first }.map { it.second }
+}
+
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun automaticQuality(player: Player): Boolean =
+    player.trackSelectionParameters.overrides.keys.none { it.type == C.TRACK_TYPE_VIDEO }
+
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun clearVideoOverride(player: Player) {
+    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+        .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+        .build()
+}
+
 /** What the player actually reports about the stream being decoded: nothing is guessed. */
 @androidx.annotation.OptIn(UnstableApi::class)
 private fun diagnostics(player: ExoPlayer, item: PlayItem): List<Pair<String, String>> {
@@ -429,6 +466,9 @@ private fun PlayerScreen(
     player: ExoPlayer,
     item: PlayItem,
     nextItem: PlayItem?,
+    queue: List<PlayItem>,
+    index: Int,
+    onSelect: (Int) -> Unit,
     hasQueue: Boolean,
     hasLastChannel: Boolean,
     overlay: Boolean,
@@ -452,6 +492,7 @@ private fun PlayerScreen(
     var drag by remember { mutableStateOf<Float?>(null) }
     var showTracks by remember { mutableStateOf(false) }
     var showSpeed by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     var showStats by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var speed by remember { mutableFloatStateOf(1f) }
@@ -472,7 +513,7 @@ private fun PlayerScreen(
         // Live streams always play at normal speed.
         player.setPlaybackSpeed(if (item.live) 1f else speed)
     }
-    val dialogOpen = showTracks || showSpeed
+    val dialogOpen = showTracks || showSpeed || showQueue
     LaunchedEffect(overlay, activity, dialogOpen, error, pendingNext) {
         if (overlay && !dialogOpen && error == null && !pendingNext) {
             delay(5000)
@@ -643,7 +684,10 @@ private fun PlayerScreen(
                             onLastChannel()
                         }
                     }
-                    OptionButton(Icons.Filled.Subtitles, "Audio et sous-titres") { showTracks = true }
+                    if (hasQueue) {
+                        OptionButton(Icons.Filled.FormatListBulleted, if (item.live) "Chaînes" else "Épisodes") { showQueue = true }
+                    }
+                    OptionButton(Icons.Filled.Subtitles, "Audio, sous-titres, qualité") { showTracks = true }
                     if (!item.live) {
                         OptionButton(Icons.Filled.Speed, "Vitesse : " + speedLabel(speed)) { showSpeed = true }
                     }
@@ -735,10 +779,12 @@ private fun PlayerScreen(
     if (showTracks) {
         val audio = trackOptions(player, C.TRACK_TYPE_AUDIO)
         val subtitles = trackOptions(player, C.TRACK_TYPE_TEXT)
+        val qualities = videoOptions(player)
+        val automatic = automaticQuality(player)
         AlertDialog(
             onDismissRequest = { showTracks = false },
             containerColor = ArkaSurface,
-            title = { Text("Audio et sous-titres") },
+            title = { Text("Audio, sous-titres, qualité") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("Audio", color = ArkaMuted, fontSize = 12.sp)
@@ -760,9 +806,43 @@ private fun PlayerScreen(
                             showTracks = false
                         }
                     }
+                    // Only offered when the stream really carries several video qualities.
+                    if (qualities.size > 1) {
+                        Text("Qualité", color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
+                        ChoiceLine("Automatique", automatic) {
+                            clearVideoOverride(player)
+                            showTracks = false
+                        }
+                        qualities.forEach { option ->
+                            ChoiceLine(option.label, !automatic && option.selected) {
+                                selectTrack(player, C.TRACK_TYPE_VIDEO, option)
+                                showTracks = false
+                            }
+                        }
+                    }
                 }
             },
             confirmButton = { TextButton(onClick = { showTracks = false }) { Text("Fermer") } },
+        )
+    }
+
+    if (showQueue) {
+        AlertDialog(
+            onDismissRequest = { showQueue = false },
+            containerColor = ArkaSurface,
+            title = { Text(if (item.live) "Chaînes" else "Épisodes") },
+            text = {
+                LazyColumn(state = rememberLazyListState(initialFirstVisibleItemIndex = index)) {
+                    itemsIndexed(queue) { position, entry ->
+                        val label = if (entry.live) entry.title else entry.subtitle.ifBlank { entry.title }
+                        ChoiceLine(label, position == index) {
+                            showQueue = false
+                            if (position != index) onSelect(position)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showQueue = false }) { Text("Fermer") } },
         )
     }
 

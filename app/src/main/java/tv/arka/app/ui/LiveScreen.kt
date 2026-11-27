@@ -1,8 +1,10 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 
 package tv.arka.app.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,6 +86,13 @@ fun CategoryChips(selected: String, onSelect: (String) -> Unit) {
             title = { Text("Groupes affichés") },
             text = {
                 LazyColumn {
+                    if (Repo.hiddenChannels.isNotEmpty()) {
+                        item {
+                            TextButton(onClick = { Repo.showAllChannels() }) {
+                                Text("Réafficher les ${Repo.hiddenChannels.size} chaînes masquées")
+                            }
+                        }
+                    }
                     items(Repo.liveCategories) { category ->
                         val shown = category.id !in Repo.hiddenCategories
                         Row(
@@ -102,20 +111,31 @@ fun CategoryChips(selected: String, onSelect: (String) -> Unit) {
     }
 }
 
+/**
+ * Channels shown for a group. Hidden channels never appear; hidden groups are left out of "Toutes".
+ * Favourites and recent channels keep the user's order.
+ */
 fun channelsFor(
     category: String,
     channels: List<Channel>,
-    favorites: Set<String>,
+    favoriteOrder: List<String>,
     recent: List<String>,
-    hidden: Set<String>,
-): List<Channel> = when (category) {
-    CATEGORY_ALL -> if (hidden.isEmpty()) channels else channels.filter { it.categoryId !in hidden }
-    CATEGORY_FAVORITES -> channels.filter { it.id in favorites }
-    CATEGORY_RECENT -> {
-        val byId = channels.associateBy { it.id }
-        recent.mapNotNull { byId[it] }
+    hiddenCategories: Set<String>,
+    hiddenChannels: Set<String>,
+): List<Channel> {
+    val visible = if (hiddenChannels.isEmpty()) channels else channels.filter { it.id !in hiddenChannels }
+    return when (category) {
+        CATEGORY_ALL -> if (hiddenCategories.isEmpty()) visible else visible.filter { it.categoryId !in hiddenCategories }
+        CATEGORY_FAVORITES -> {
+            val byId = visible.associateBy { it.id }
+            favoriteOrder.mapNotNull { byId[it] }
+        }
+        CATEGORY_RECENT -> {
+            val byId = visible.associateBy { it.id }
+            recent.mapNotNull { byId[it] }
+        }
+        else -> visible.filter { it.categoryId == category }
     }
-    else -> channels.filter { it.categoryId == category }
 }
 
 @Composable
@@ -148,9 +168,12 @@ fun LiveScreen() {
     val favorites = Repo.favorites
     val recent = Repo.recentChannels
     val hidden = Repo.hiddenCategories
-    val list = remember(channels, category, favorites, recent, hidden) {
-        channelsFor(category, channels, favorites, recent, hidden)
+    val hiddenChannels = Repo.hiddenChannels
+    val favoriteOrder = Repo.favoriteOrder
+    val list = remember(channels, category, favoriteOrder, recent, hidden, hiddenChannels) {
+        channelsFor(category, channels, favoriteOrder, recent, hidden, hiddenChannels)
     }
+    var menuFor by remember { mutableStateOf<Channel?>(null) }
     val now = rememberNow()
 
     Column(Modifier.fillMaxSize()) {
@@ -172,18 +195,58 @@ fun LiveScreen() {
                         favorite = channel.id in favorites,
                         onClick = { playChannel(context, list, channel) },
                         onFavorite = { Repo.toggleFavorite(channel.id) },
+                        onLongClick = { menuFor = channel },
                     )
                 }
             }
         }
     }
+
+    menuFor?.let { channel ->
+        val favorite = channel.id in favorites
+        val position = favoriteOrder.indexOf(channel.id)
+        AlertDialog(
+            onDismissRequest = { menuFor = null },
+            containerColor = ArkaSurface,
+            title = { Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+            text = {
+                Column {
+                    TextButton(onClick = { Repo.toggleFavorite(channel.id) }) {
+                        Text(if (favorite) "Retirer des favoris" else "Ajouter aux favoris")
+                    }
+                    if (favorite) {
+                        TextButton(enabled = position > 0, onClick = { Repo.moveFavorite(channel.id, -1) }) {
+                            Text("Monter dans les favoris")
+                        }
+                        TextButton(
+                            enabled = position in 0 until favoriteOrder.lastIndex,
+                            onClick = { Repo.moveFavorite(channel.id, 1) },
+                        ) { Text("Descendre dans les favoris") }
+                    }
+                    TextButton(onClick = {
+                        Repo.setChannelHidden(channel.id, true)
+                        menuFor = null
+                    }) { Text("Masquer cette chaîne") }
+                }
+            },
+            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Fermer") } },
+        )
+    }
 }
 
 @Composable
-fun ChannelRow(channel: Channel, now: Long, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit) {
+fun ChannelRow(
+    channel: Channel,
+    now: Long,
+    favorite: Boolean,
+    onClick: () -> Unit,
+    onFavorite: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+) {
     val program = Repo.nowPlaying(channel.epgId, now)
     Row(
-        Modifier.fillMaxWidth().focusHighlight(scale = 1f).clickable(onClick = onClick)
+        Modifier.fillMaxWidth().focusHighlight(scale = 1f)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
             .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

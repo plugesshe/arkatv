@@ -62,6 +62,11 @@ object Store {
         get() = p().getString("live_format", "ts") ?: "ts"
         set(value) = p().edit().putString("live_format", value).apply()
 
+    /** Hours before a stored catalogue is refreshed when the app opens. 0 turns automatic refresh off. */
+    var catalogRefreshHours: Int
+        get() = p().getInt("refresh_hours", 12)
+        set(value) = p().edit().putInt("refresh_hours", value).apply()
+
     fun lastSync(sourceId: String): Long = p().getLong("sync_$sourceId", 0)
     fun setLastSync(sourceId: String, time: Long) = p().edit().putLong("sync_$sourceId", time).apply()
 
@@ -124,6 +129,12 @@ object Store {
     fun loadRecentChannels(sourceId: String): List<String> = loadStrings("recent_$sourceId")
     fun saveRecentChannels(sourceId: String, ids: List<String>) = saveStrings("recent_$sourceId", ids)
 
+    fun loadHiddenChannels(sourceId: String): Set<String> = loadStrings("hiddench_$sourceId").toSet()
+    fun saveHiddenChannels(sourceId: String, ids: Set<String>) = saveStrings("hiddench_$sourceId", ids)
+
+    /** Favourite channel ids in the order chosen by the user. */
+    fun loadFavoriteOrder(sourceId: String): List<String> = loadStrings("fav_$sourceId").distinct()
+
     fun loadHiddenCategories(sourceId: String): Set<String> = loadStrings("hidden_$sourceId").toSet()
     fun saveHiddenCategories(sourceId: String, ids: Set<String>) = saveStrings("hidden_$sourceId", ids)
 
@@ -159,7 +170,7 @@ object Store {
         }
     }
 
-    fun saveFavorites(sourceId: String, value: Set<String>) {
+    fun saveFavorites(sourceId: String, value: Collection<String>) {
         val array = JSONArray()
         value.forEach { array.put(it) }
         writeBlob("fav_$sourceId", array.toString())
@@ -211,7 +222,7 @@ object Store {
         p().edit()
             .remove("enc_list_$sourceId").remove("enc_progress_$sourceId").remove("enc_fav_$sourceId")
             .remove("enc_epgurl_$sourceId").remove("sync_$sourceId").remove("epgsync_$sourceId")
-            .remove("enc_recent_$sourceId").remove("enc_hidden_$sourceId").remove("enc_account_$sourceId")
+            .remove("enc_hiddench_$sourceId").remove("enc_recent_$sourceId").remove("enc_hidden_$sourceId").remove("enc_account_$sourceId")
             .apply()
     }
 
