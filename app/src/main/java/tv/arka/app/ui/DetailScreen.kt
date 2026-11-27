@@ -36,7 +36,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,13 +71,13 @@ private fun episodeItem(vod: Vod, episode: Episode): PlayItem = PlayItem(
 @Composable
 fun DetailScreen(vod: Vod, onBack: () -> Unit) {
     val context = LocalContext.current
-    val details by produceState<VodDetails?>(initialValue = null, vod.kind, vod.id) {
-        val result = try {
+    var details by remember(vod.kind, vod.id) { mutableStateOf<VodDetails?>(null) }
+    LaunchedEffect(vod.kind, vod.id) {
+        details = try {
             Repo.details(vod)
         } catch (e: Exception) {
             VodDetails(plot = vod.plot, year = vod.year)
         }
-        value = result
     }
     var selectedSeason by remember(vod.id) { mutableIntStateOf(-1) }
     val loaded = details
