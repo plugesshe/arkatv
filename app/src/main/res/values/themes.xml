@@ -1,0 +1,8 @@
+<resources>
+    <color name="arka_bg">#0B0B0F</color>
+    <style name="Theme.ArkaTV" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/arka_bg</item>
+        <item name="android:statusBarColor">@color/arka_bg</item>
+        <item name="android:navigationBarColor">@color/arka_bg</item>
+    </style>
+</resources>
