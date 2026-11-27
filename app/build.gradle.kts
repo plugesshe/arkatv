@@ -15,7 +15,7 @@ android {
         applicationId = "tv.arka.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
+        versionCode = 5
         versionName = "0.2.0-dev"
     }
     signingConfigs {

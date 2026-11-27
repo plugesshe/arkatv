@@ -24,7 +24,9 @@ version d'Android et la taille de la source.
 
 - Les films et séries ne sont plus chargés en mémoire : l'accueil lit 20 titres par rangée à l'affichage,
   les grilles 60 par page. Les chaînes et le guide restent entièrement en mémoire.
-- Pendant une actualisation, le catalogue complet transite encore en mémoire avant écriture en base.
+- Pendant une actualisation, les entrées sont écrites en base par lots de 500 au fil du téléchargement :
+  la mémoire ne dépend plus de la taille de la source. En contrepartie, les listes Xtream sont
+  téléchargées l'une après l'autre.
 - Les URLs des chaînes M3U sont déchiffrées une à une au chargement du cache ; celles des films M3U,
   page par page.
 - La recherche interroge la base par `LIKE` sur une colonne normalisée : chaque requête parcourt la

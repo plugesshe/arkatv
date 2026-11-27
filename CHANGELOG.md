@@ -13,6 +13,7 @@
   arrière-plan, dernier catalogue valide conservé en cas de panne.
 - Changement de format du direct (MPEG-TS / HLS) sans rechargement.
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
+- Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Catalogue
 - Grilles triables : ordre par défaut, ajouts récents, A – Z, année, note.

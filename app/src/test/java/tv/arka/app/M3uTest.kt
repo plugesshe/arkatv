@@ -56,6 +56,15 @@ class M3uTest {
     }
 
     @Test
+    fun streamsEntriesAsTheyAreRead() {
+        val seen = ArrayList<String>()
+        val header = M3u.parse(StringReader(playlist), { seen.add("chaîne:" + it.name) }, { seen.add("film:" + it.name) })
+        assertEquals(listOf("chaîne:One HD", "chaîne:News, the 24/7 channel", "film:Un film (2020)", "chaîne:Sans groupe"), seen)
+        assertEquals(listOf("Films"), header.vodCategories.map { it.name })
+        assertEquals("http://guide.test/epg.xml.gz", header.epgUrl)
+    }
+
+    @Test
     fun rejectsAPlaylistWithoutAnyEntry() {
         val failed = try {
             M3u.parse(StringReader("<html>not a playlist</html>"))

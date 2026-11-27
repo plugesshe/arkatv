@@ -11,12 +11,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.arka.app.data.db.ArkaDatabase
 import tv.arka.app.data.db.CatalogStore
+import java.io.IOException
 
 /**
  * App-wide state, offline-first: the last valid catalogue is shown from the local cache at once,
@@ -252,64 +251,54 @@ object Repo {
         }
     }
 
-    private class Fetched(val catalog: Catalog, val epgUrl: String)
-
     /**
-     * Downloads the catalogue and stores it in one transaction. The full lists only live for the
-     * duration of this call. Returns the guide URL found in an M3U header, if any.
+     * Downloads the catalogue and writes it to the store as it arrives, in one transaction:
+     * the full lists never sit in memory, and a failure leaves the previous catalogue untouched.
+     * Returns the guide URL found in an M3U header, if any.
      */
     private suspend fun sync(source: Source, catalogStore: CatalogStore): String {
-        val fetched = fetch(source)
-        withContext(Dispatchers.IO) { catalogStore.save(source, fetched.catalog) }
-        return fetched.epgUrl
+        // A provider without films or series must not block the channels. But once a kind has
+        // been stored, failing to download it again fails the refresh rather than emptying it.
+        val hadMovies = catalogStore.count(source, VodKind.MOVIE) > 0
+        val hadSeries = catalogStore.count(source, VodKind.SERIES) > 0
+        val format = Store.liveFormat
+        return withContext(Dispatchers.IO) {
+            var epgUrl = ""
+            if (source.type != "xtream") {
+                catalogStore.replaceBlocking(source) { writer ->
+                    Http.open(source.url).use { response ->
+                        val body = response.body ?: throw IOException("Playlist vide")
+                        val header = M3u.parse(body.charStream(), writer::channel, writer::vod)
+                        writer.liveCategories(header.liveCategories)
+                        writer.movieCategories(header.vodCategories)
+                        epgUrl = header.epgUrl
+                    }
+                }
+            } else {
+                val api = XtreamApi(source)
+                api.authenticate()
+                catalogStore.replaceBlocking(source) { writer ->
+                    writer.liveCategories(api.liveCategories())
+                    api.eachLiveStream(format, writer::channel)
+                    optional(required = hadMovies) {
+                        writer.movieCategories(api.vodCategories())
+                        api.eachMovie(writer::vod)
+                    }
+                    optional(required = hadSeries) {
+                        writer.seriesCategories(api.seriesCategories())
+                        api.eachSeries(writer::vod)
+                    }
+                }
+            }
+            epgUrl
+        }
     }
 
-    private suspend fun fetch(source: Source): Fetched {
-        if (source.type != "xtream") {
-            val result = withContext(Dispatchers.IO) { M3u.load(source.url) }
-            return Fetched(
-                Catalog(
-                    liveCategories = result.liveCategories,
-                    channels = result.channels,
-                    vodCategories = result.vodCategories,
-                    movies = result.movies,
-                ),
-                result.epgUrl,
-            )
-        }
-        val api = XtreamApi(source)
-        val format = Store.liveFormat
-        withContext(Dispatchers.IO) { api.authenticate() }
-        return coroutineScope {
-            val live = async(Dispatchers.IO) { api.liveCategories() to api.liveStreams(format) }
-            val vod = async(Dispatchers.IO) {
-                try {
-                    api.vodCategories() to api.vodStreams()
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            val shows = async(Dispatchers.IO) {
-                try {
-                    api.seriesCategories() to api.series()
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            val liveResult = live.await()
-            val vodResult = vod.await()
-            val showsResult = shows.await()
-            Fetched(
-                Catalog(
-                    liveCategories = liveResult.first,
-                    channels = liveResult.second,
-                    vodCategories = vodResult?.first.orEmpty(),
-                    movies = vodResult?.second.orEmpty(),
-                    seriesCategories = showsResult?.first.orEmpty(),
-                    series = showsResult?.second.orEmpty(),
-                ),
-                "",
-            )
+    private inline fun optional(required: Boolean, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            if (required) throw e
         }
     }
 

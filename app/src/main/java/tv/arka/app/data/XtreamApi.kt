@@ -53,52 +53,63 @@ class XtreamApi(private val source: Source) {
         Category(id, m["category_name"].orEmpty())
     }
 
-    fun liveStreams(format: String): List<Channel> {
+    /** Hands each live channel over as soon as it is read from the response. */
+    fun eachLiveStream(format: String, action: (Channel) -> Unit) {
         var fallbackNumber = 0
-        return readArray(api("get_live_streams")) { m ->
-            val id = m["stream_id"] ?: return@readArray null
+        readEach(api("get_live_streams")) { m ->
+            val id = m["stream_id"] ?: return@readEach
             fallbackNumber++
-            Channel(
-                id = id,
-                name = m["name"].orEmpty(),
-                logo = m["stream_icon"].orEmpty(),
-                categoryId = m["category_id"].orEmpty(),
-                epgId = m["epg_channel_id"].orEmpty(),
-                url = liveUrl(id, format),
-                number = m["num"]?.toIntOrNull() ?: fallbackNumber,
+            action(
+                Channel(
+                    id = id,
+                    name = m["name"].orEmpty(),
+                    logo = m["stream_icon"].orEmpty(),
+                    categoryId = m["category_id"].orEmpty(),
+                    epgId = m["epg_channel_id"].orEmpty(),
+                    url = liveUrl(id, format),
+                    number = m["num"]?.toIntOrNull() ?: fallbackNumber,
+                )
             )
         }
     }
 
-    fun vodStreams(): List<Vod> = readArray(api("get_vod_streams")) { m ->
-        val id = m["stream_id"] ?: return@readArray null
-        val ext = m["container_extension"]?.ifBlank { null } ?: "mp4"
-        Vod(
-            id = id,
-            kind = VodKind.MOVIE,
-            name = m["name"].orEmpty(),
-            poster = m["stream_icon"].orEmpty(),
-            categoryId = m["category_id"].orEmpty(),
-            url = movieUrl(id, ext),
-            rating = m["rating"].orEmpty(),
-            added = m["added"]?.toLongOrNull() ?: 0,
-        )
+    fun eachMovie(action: (Vod) -> Unit) {
+        readEach(api("get_vod_streams")) { m ->
+            val id = m["stream_id"] ?: return@readEach
+            val ext = m["container_extension"]?.ifBlank { null } ?: "mp4"
+            action(
+                Vod(
+                    id = id,
+                    kind = VodKind.MOVIE,
+                    name = m["name"].orEmpty(),
+                    poster = m["stream_icon"].orEmpty(),
+                    categoryId = m["category_id"].orEmpty(),
+                    url = movieUrl(id, ext),
+                    rating = m["rating"].orEmpty(),
+                    added = m["added"]?.toLongOrNull() ?: 0,
+                )
+            )
+        }
     }
 
-    fun series(): List<Vod> = readArray(api("get_series")) { m ->
-        val id = m["series_id"] ?: return@readArray null
-        Vod(
-            id = id,
-            kind = VodKind.SERIES,
-            name = m["name"].orEmpty(),
-            poster = m["cover"].orEmpty(),
-            categoryId = m["category_id"].orEmpty(),
-            url = "",
-            rating = m["rating"].orEmpty(),
-            added = m["last_modified"]?.toLongOrNull() ?: 0,
-            plot = m["plot"].orEmpty(),
-            year = (m["releaseDate"] ?: m["release_date"]).orEmpty().take(4),
-        )
+    fun eachSeries(action: (Vod) -> Unit) {
+        readEach(api("get_series")) { m ->
+            val id = m["series_id"] ?: return@readEach
+            action(
+                Vod(
+                    id = id,
+                    kind = VodKind.SERIES,
+                    name = m["name"].orEmpty(),
+                    poster = m["cover"].orEmpty(),
+                    categoryId = m["category_id"].orEmpty(),
+                    url = "",
+                    rating = m["rating"].orEmpty(),
+                    added = m["last_modified"]?.toLongOrNull() ?: 0,
+                    plot = m["plot"].orEmpty(),
+                    year = (m["releaseDate"] ?: m["release_date"]).orEmpty().take(4),
+                )
+            )
+        }
     }
 
     fun movieDetails(id: String): VodDetails {
@@ -122,11 +133,18 @@ class XtreamApi(private val source: Source) {
 
     private fun backdrop(info: JSONObject): String = XtreamJson.backdrop(info)
 
-    private fun <T> readArray(url: String, map: (Map<String, String>) -> T?): List<T> =
+    private fun <T> readArray(url: String, map: (Map<String, String>) -> T?): List<T> {
+        val out = ArrayList<T>()
+        readEach(url) { fields -> map(fields)?.let(out::add) }
+        return out
+    }
+
+    private fun readEach(url: String, action: (Map<String, String>) -> Unit) {
         Http.open(url).use { response ->
-            val body = response.body ?: return emptyList()
-            XtreamJson.readArray(body.charStream(), map)
+            val body = response.body ?: return
+            XtreamJson.readEach(body.charStream(), action)
         }
+    }
 }
 
 /** Pure parsing of Xtream Codes responses, kept apart from the network for testing. */
@@ -197,12 +215,20 @@ object XtreamJson {
         return if (single.startsWith("http")) single else ""
     }
 
-    /** Streams a (possibly very large) JSON array of flat objects without loading it in memory. */
     fun <T> readArray(input: Reader, map: (Map<String, String>) -> T?): List<T> {
         val out = ArrayList<T>()
+        readEach(input) { fields -> map(fields)?.let(out::add) }
+        return out
+    }
+
+    /**
+     * Streams a (possibly very large) JSON array of flat objects without loading it in memory.
+     * The map given to [action] is reused for the next object: read it, do not keep it.
+     */
+    fun readEach(input: Reader, action: (Map<String, String>) -> Unit) {
         JsonReader(input).use { reader ->
             reader.isLenient = true
-            if (reader.peek() != JsonToken.BEGIN_ARRAY) return out
+            if (reader.peek() != JsonToken.BEGIN_ARRAY) return
             reader.beginArray()
             val fields = HashMap<String, String>()
             while (reader.hasNext()) {
@@ -220,9 +246,8 @@ object XtreamJson {
                     }
                 }
                 reader.endObject()
-                map(fields)?.let(out::add)
+                action(fields)
             }
         }
-        return out
     }
 }

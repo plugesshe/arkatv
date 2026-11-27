@@ -33,7 +33,7 @@ ui/ (Compose)  ──lit──>  Repo (état applicatif, snapshot state Compose)
    « récemment ajoutés », puis le guide : l'interface est utilisable sans réseau. Les films et séries
    sont ensuite lus à la demande (`vodPage`, `search*`).
 3. Si le cache est vide, périmé (12 h) ou si l'utilisateur le demande, le catalogue est rechargé en
-   arrière-plan puis enregistré en une transaction.
+   arrière-plan : chaque entrée lue sur le réseau est écrite en base, le tout dans une seule transaction.
 4. Un échec de rechargement laisse le cache en place (`Repo.syncError`) ; seule l'absence totale de
    données produit une erreur bloquante (`Repo.error`).
 5. Le guide suit son propre cycle (6 h) et ne bloque jamais les chaînes.
@@ -49,7 +49,6 @@ ui/ (Compose)  ──lit──>  Repo (état applicatif, snapshot state Compose)
 
 - `Repo` est un singleton à état Compose, sans ViewModel ni injection de dépendances.
 - Les chaînes et le guide sont entièrement en mémoire ; les films et séries sont lus par pages.
-- Pendant une actualisation, le catalogue complet passe par la mémoire avant d'être écrit en base.
 - Les chaînes d'interface sont codées en français dans le code (pas de ressources de traduction).
 - La même interface sert le téléphone et la TV.
 

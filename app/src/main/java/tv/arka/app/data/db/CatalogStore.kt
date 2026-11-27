@@ -2,6 +2,8 @@ package tv.arka.app.data.db
 
 import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import tv.arka.app.data.Catalog
 import tv.arka.app.data.Category
 import tv.arka.app.data.Channel
@@ -18,59 +20,119 @@ import tv.arka.app.data.security.SecretBox
 class CatalogStore(private val database: ArkaDatabase) {
     private val dao = database.catalog()
 
-    suspend fun save(source: Source, catalog: Catalog) {
-        val xtream = source.type == "xtream"
-        val channels = catalog.channels.mapIndexed { index, c ->
-            ChannelRow(
-                sourceId = source.id,
-                pos = index,
-                streamId = if (xtream) c.id else "",
-                secret = if (xtream) "" else SecretBox.encrypt(c.url),
-                name = c.name,
-                logo = c.logo,
-                categoryId = c.categoryId,
-                epgId = c.epgId,
-                number = c.number,
-                search = TextNormalizer.normalize(c.name),
-            )
-        }
-        val vods = vodRows(source, MOVIE, catalog.movies, xtream) + vodRows(source, SERIES, catalog.series, xtream)
-        val categories = categoryRows(source, LIVE, catalog.liveCategories) +
-            categoryRows(source, MOVIE, catalog.vodCategories) +
-            categoryRows(source, SERIES, catalog.seriesCategories)
+    /**
+     * Receives a catalogue entry by entry and writes it in batches, so a download of any size
+     * only ever holds one batch in memory.
+     */
+    inner class Writer internal constructor(private val source: Source) {
+        private val xtream = source.type == "xtream"
+        private val channels = ArrayList<ChannelRow>(BATCH)
+        private val vods = ArrayList<VodRow>(BATCH)
+        private var channelPos = 0
+        private var moviePos = 0
+        private var seriesPos = 0
 
-        database.withTransaction {
-            dao.deleteChannels(source.id)
-            dao.deleteVods(source.id)
-            dao.deleteCategories(source.id)
-            dao.insertChannels(channels)
-            dao.insertVods(vods)
-            dao.insertCategories(categories)
+        fun liveCategories(list: List<Category>) = categories(LIVE, list)
+        fun movieCategories(list: List<Category>) = categories(MOVIE, list)
+        fun seriesCategories(list: List<Category>) = categories(SERIES, list)
+
+        private fun categories(kind: String, list: List<Category>) {
+            dao.insertCategoriesNow(list.mapIndexed { index, c -> CategoryRow(source.id, kind, index, c.id, c.name) })
+        }
+
+        fun channel(c: Channel) {
+            channels.add(
+                ChannelRow(
+                    sourceId = source.id,
+                    pos = channelPos++,
+                    streamId = if (xtream) c.id else "",
+                    secret = if (xtream) "" else SecretBox.encrypt(c.url),
+                    name = c.name,
+                    logo = c.logo,
+                    categoryId = c.categoryId,
+                    epgId = c.epgId,
+                    number = c.number,
+                    search = TextNormalizer.normalize(c.name),
+                )
+            )
+            if (channels.size >= BATCH) flushChannels()
+        }
+
+        fun vod(v: Vod) {
+            val movie = v.kind == VodKind.MOVIE
+            vods.add(
+                VodRow(
+                    sourceId = source.id,
+                    kind = if (movie) MOVIE else SERIES,
+                    pos = if (movie) moviePos++ else seriesPos++,
+                    streamId = if (xtream) v.id else "",
+                    secret = if (xtream) "" else SecretBox.encrypt(v.url),
+                    ext = if (xtream) v.url.substringAfterLast('.', "") else "",
+                    name = v.name,
+                    poster = v.poster,
+                    categoryId = v.categoryId,
+                    rating = v.rating,
+                    addedAt = v.added,
+                    plot = v.plot,
+                    year = v.year,
+                    search = TextNormalizer.normalize(v.name),
+                )
+            )
+            if (vods.size >= BATCH) flushVods()
+        }
+
+        private fun flushChannels() {
+            if (channels.isNotEmpty()) {
+                dao.insertChannelsNow(ArrayList(channels))
+                channels.clear()
+            }
+        }
+
+        private fun flushVods() {
+            if (vods.isNotEmpty()) {
+                dao.insertVodsNow(ArrayList(vods))
+                vods.clear()
+            }
+        }
+
+        internal fun finish() {
+            flushChannels()
+            flushVods()
         }
     }
 
-    private fun vodRows(source: Source, kind: String, list: List<Vod>, xtream: Boolean): List<VodRow> =
-        list.mapIndexed { index, v ->
-            VodRow(
-                sourceId = source.id,
-                kind = kind,
-                pos = index,
-                streamId = if (xtream) v.id else "",
-                secret = if (xtream) "" else SecretBox.encrypt(v.url),
-                ext = if (xtream) v.url.substringAfterLast('.', "") else "",
-                name = v.name,
-                poster = v.poster,
-                categoryId = v.categoryId,
-                rating = v.rating,
-                addedAt = v.added,
-                plot = v.plot,
-                year = v.year,
-                search = TextNormalizer.normalize(v.name),
-            )
-        }
+    /**
+     * Replaces the stored catalogue of [source] with whatever [fill] writes, in one transaction.
+     * If [fill] throws (network cut, invalid answer), nothing changes: the previous catalogue stays.
+     * Blocking: call it from a background thread.
+     */
+    fun replaceBlocking(source: Source, fill: (Writer) -> Unit) {
+        database.runInTransaction(
+            Runnable {
+                dao.deleteChannelsNow(source.id)
+                dao.deleteVodsNow(source.id)
+                dao.deleteCategoriesNow(source.id)
+                val writer = Writer(source)
+                fill(writer)
+                writer.finish()
+            }
+        )
+    }
 
-    private fun categoryRows(source: Source, kind: String, list: List<Category>): List<CategoryRow> =
-        list.mapIndexed { index, c -> CategoryRow(source.id, kind, index, c.id, c.name) }
+    suspend fun replace(source: Source, fill: (Writer) -> Unit) =
+        withContext(Dispatchers.IO) { replaceBlocking(source, fill) }
+
+    suspend fun save(source: Source, catalog: Catalog) = replace(source) { writer ->
+        writer.liveCategories(catalog.liveCategories)
+        writer.movieCategories(catalog.vodCategories)
+        writer.seriesCategories(catalog.seriesCategories)
+        catalog.channels.forEach(writer::channel)
+        catalog.movies.forEach(writer::vod)
+        catalog.series.forEach(writer::vod)
+    }
+
+    suspend fun count(source: Source, kind: VodKind): Int =
+        dao.countVods(source.id, if (kind == VodKind.MOVIE) MOVIE else SERIES)
 
     /** Returns null when nothing was ever cached for this source. */
     suspend fun load(source: Source, liveFormat: String): Catalog? {
@@ -292,5 +354,6 @@ class CatalogStore(private val database: ArkaDatabase) {
         const val LIVE = "live"
         const val MOVIE = "movie"
         const val SERIES = "series"
+        const val BATCH = 500
     }
 }

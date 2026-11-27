@@ -119,6 +119,25 @@ interface CatalogDao {
 
     @Query("DELETE FROM programs WHERE sourceId = :sourceId")
     suspend fun deletePrograms(sourceId: String)
+
+    // Blocking variants used inside the single transaction that replaces a catalogue while it downloads.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertChannelsNow(rows: List<ChannelRow>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertVodsNow(rows: List<VodRow>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    fun insertCategoriesNow(rows: List<CategoryRow>)
+
+    @Query("DELETE FROM channels WHERE sourceId = :sourceId")
+    fun deleteChannelsNow(sourceId: String)
+
+    @Query("DELETE FROM vods WHERE sourceId = :sourceId")
+    fun deleteVodsNow(sourceId: String)
+
+    @Query("DELETE FROM categories WHERE sourceId = :sourceId")
+    fun deleteCategoriesNow(sourceId: String)
 }
 
 @Database(
@@ -137,6 +156,9 @@ abstract class ArkaDatabase : RoomDatabase() {
         fun create(context: Context): ArkaDatabase =
             Room.databaseBuilder(context, ArkaDatabase::class.java, "arkatv-catalog.db")
                 .fallbackToDestructiveMigration()
+                // Readers must keep working while a catalogue refresh holds its write transaction,
+                // including on low-memory TV boxes where Room would not pick this mode by itself.
+                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
                 .build()
     }
 }

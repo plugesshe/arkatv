@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 4).
+- Version : `0.2.0-dev` (versionCode 5).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -24,9 +24,10 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 38 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Tests unitaires | 41 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
 | Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
 | Films et séries lus par pages depuis la base (accueil, grilles), tris dans les grilles, position conservée au retour d'une fiche | fait, non testé sur appareil | `CatalogStore.loadSummary` / `vodPage`, `ui/CatalogGridScreen.kt`, `MainActivity.kt` |
+| Actualisation en flux : le catalogue est écrit en base au fil du téléchargement, en une transaction ; un échec laisse l'ancien catalogue intact | fait, testé unitairement, non testé sur appareil | `Repo.sync`, `CatalogStore.replaceBlocking` |
 | Recherche sur le catalogue stocké : sans accents, classée, paginée, historique local | fait, non testé sur appareil | `data/TextNormalizer.kt`, `CatalogStore.search*`, `ui/SearchScreen.kt` |
 | Lint et tests en CI, « latest » protégée | fait | `.github/workflows/build.yml` |
 
@@ -35,12 +36,10 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 1. Validation manuelle sur téléphone et Android TV de tout le tableau ci-dessus.
 2. Interface Android TV dédiée (barre latérale, focus initial, restauration du focus).
 3. Chaînes d'interface en ressources, français et anglais.
-4. Synchronisation en flux : pendant une actualisation, le catalogue complet transite encore en
-   mémoire avant d'être écrit en base (pic mémoire sur les très grosses sources).
-5. Chaînes et guide : toujours entièrement en mémoire (acceptable jusqu'à quelques dizaines de milliers
+4. Chaînes et guide : toujours entièrement en mémoire (acceptable jusqu'à quelques dizaines de milliers
    de chaînes ; à mesurer).
-6. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
-7. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
+5. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
+6. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
 
 ## Décisions prises
 
@@ -61,6 +60,12 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
   que l'écran est dans la pile de navigation.
 - **État des écrans conservé dans la pile de navigation** (`SaveableStateHolder` + `CatalogGridState`) :
   revenir d'une fiche retrouve la grille, son tri et sa position.
+- **Actualisation séquentielle dans une seule transaction** : les trois listes Xtream (direct, films,
+  séries) sont téléchargées l'une après l'autre et non plus en parallèle. C'est plus lent sur le réseau,
+  mais la mémoire reste plate et le remplacement est atomique. La base est en mode WAL pour que la
+  lecture reste possible pendant l'écriture.
+- **Films ou séries indisponibles chez le fournisseur** : toléré tant que rien n'avait été stocké pour ce
+  type ; sinon l'actualisation échoue et l'ancien catalogue est conservé, plutôt que de le vider.
 - **Lint** : la fiche détaillée charge ses données avec `LaunchedEffect` ; `produceState` y déclenchait un
   faux positif de la règle `ProduceStateDoesNotAssignValue`.
 

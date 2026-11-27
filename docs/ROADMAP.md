@@ -16,7 +16,7 @@ est dans `PROGRESS.md`.
 - ✅ Recherche sur le catalogue stocké : insensible aux accents, classée par pertinence, paginée, historique local
 - ✅ Films et séries lus par pages depuis la base ; tris (défaut, récents, A–Z, année, note) dans les grilles
 - ✅ Position et filtres conservés au retour d'une fiche
-- ⬜ Synchronisation en flux (sans catalogue complet en mémoire pendant l'actualisation)
+- ✅ Actualisation en flux, atomique : aucun catalogue complet en mémoire, ancien catalogue conservé en cas d'échec
 
 ## P1 — Refonte premium
 

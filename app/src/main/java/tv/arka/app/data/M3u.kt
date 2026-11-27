@@ -1,5 +1,8 @@
 package tv.arka.app.data
 
+import java.io.IOException
+import java.io.Reader
+
 object M3u {
     class Result(
         val liveCategories: List<Category>,
@@ -9,20 +12,34 @@ object M3u {
         val epgUrl: String,
     )
 
+    /** What a playlist says about itself once every entry has been handed over. */
+    class Header(
+        val liveCategories: List<Category>,
+        val vodCategories: List<Category>,
+        val epgUrl: String,
+    )
+
     private val attribute = Regex("([\\w-]+)=\"([^\"]*)\"")
     private val videoExtensions = listOf(".mp4", ".mkv", ".avi", ".mov", ".m4v")
 
-    fun load(url: String): Result = Http.open(url).use { response ->
-        val body = response.body ?: throw java.io.IOException("Playlist vide")
-        parse(body.charStream())
-    }
-
-    fun parse(input: java.io.Reader): Result {
+    /** Reads a whole playlist in memory. For tests: the app uses the streaming form below. */
+    fun parse(input: Reader): Result {
         val channels = ArrayList<Channel>()
         val movies = ArrayList<Vod>()
+        val header = parse(input, { channels.add(it) }, { movies.add(it) })
+        return Result(header.liveCategories, channels, header.vodCategories, movies, header.epgUrl)
+    }
+
+    /**
+     * Streams a playlist: each entry is handed to [onChannel] or [onMovie] as soon as it is read,
+     * so the playlist is never held in memory as a whole.
+     */
+    fun parse(input: Reader, onChannel: (Channel) -> Unit, onMovie: (Vod) -> Unit): Header {
         val liveCategories = LinkedHashSet<String>()
         val vodCategories = LinkedHashSet<String>()
         var epgUrl = ""
+        var channelCount = 0
+        var movieCount = 0
 
         var name = ""
         var logo = ""
@@ -56,7 +73,7 @@ object M3u {
                         val isVod = "/movie/" in path || "/series/" in path || videoExtensions.any { path.endsWith(it) }
                         if (isVod) {
                             vodCategories.add(group)
-                            movies.add(
+                            onMovie(
                                 Vod(
                                     id = line,
                                     kind = VodKind.MOVIE,
@@ -64,12 +81,14 @@ object M3u {
                                     poster = logo,
                                     categoryId = group,
                                     url = line,
-                                    added = (1_000_000 - movies.size).toLong(),
+                                    added = (1_000_000 - movieCount).toLong(),
                                 )
                             )
+                            movieCount++
                         } else {
                             liveCategories.add(group)
-                            channels.add(
+                            channelCount++
+                            onChannel(
                                 Channel(
                                     id = line,
                                     name = name,
@@ -77,7 +96,7 @@ object M3u {
                                     categoryId = group,
                                     epgId = epgId,
                                     url = line,
-                                    number = channels.size + 1,
+                                    number = channelCount,
                                 )
                             )
                         }
@@ -85,14 +104,12 @@ object M3u {
                 }
             }
         }
-        if (channels.isEmpty() && movies.isEmpty()) {
-            throw java.io.IOException("Aucune chaîne trouvée dans cette playlist")
+        if (channelCount == 0 && movieCount == 0) {
+            throw IOException("Aucune chaîne trouvée dans cette playlist")
         }
-        return Result(
+        return Header(
             liveCategories = liveCategories.map { Category(it, it) },
-            channels = channels,
             vodCategories = vodCategories.map { Category(it, it) },
-            movies = movies,
             epgUrl = epgUrl,
         )
     }

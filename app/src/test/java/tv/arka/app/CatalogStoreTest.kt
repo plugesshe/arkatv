@@ -25,6 +25,7 @@ import tv.arka.app.data.VodSort
 import tv.arka.app.data.db.ArkaDatabase
 import tv.arka.app.data.db.CatalogStore
 import tv.arka.app.data.security.SecretBox
+import java.io.IOException
 
 @RunWith(RobolectricTestRunner::class)
 class CatalogStoreTest {
@@ -205,6 +206,34 @@ class CatalogStoreTest {
         assertEquals(3, first.size)
         assertEquals(listOf("L'Héritier"), second.map { it.name })
         assertEquals("http://host.test:8080/movie/alice/s3cret/13.mkv", second[0].url)
+    }
+
+    @Test
+    fun aFailedRefreshLeavesThePreviousCatalogueUntouched() = runBlocking {
+        store.save(xtream, catalog)
+        val failed = try {
+            store.replace(xtream) { writer ->
+                writer.channel(Channel("9", "Partiel", "", "l1", "", "u", 1))
+                throw IOException("coupure réseau")
+            }
+            false
+        } catch (e: IOException) {
+            true
+        }
+        assertTrue(failed)
+        assertEquals(catalog, store.load(xtream, "ts"))
+    }
+
+    @Test
+    fun writesLargeCataloguesInBatchesKeepingTheirOrder() = runBlocking {
+        store.replace(xtream) { writer ->
+            repeat(1234) { i -> writer.vod(movie("m$i", "Film $i")) }
+            repeat(3) { i -> writer.channel(Channel("c$i", "Chaîne $i", "", "l1", "", "u", i + 1)) }
+        }
+        assertEquals(1234, store.count(xtream, VodKind.MOVIE))
+        val page = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, 3, 1230)
+        assertEquals(listOf("Film 1230", "Film 1231", "Film 1232"), page.map { it.name })
+        assertEquals(3, store.load(xtream, "ts")!!.channels.size)
     }
 
     private suspend fun search(text: String): List<String> =
