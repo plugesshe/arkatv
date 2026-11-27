@@ -190,7 +190,8 @@ fun DetailScreen(vod: Vod, onBack: () -> Unit) {
 private fun EpisodeRow(vod: Vod, episode: Episode, onClick: () -> Unit) {
     val progress = Repo.progressFor("e:${episode.id}")
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        Modifier.fillMaxWidth().focusHighlight(scale = 1f).clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(128.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)).background(ArkaCard)) {

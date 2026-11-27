@@ -83,7 +83,7 @@ fun LiveStatus() {
                 Text("Chargement des chaînes…", color = ArkaMuted)
             }
             error != null -> {
-                Text(error, color = Color(0xFFFF6B6B), textAlign = TextAlign.Center)
+                Text(error, color = ArkaError, textAlign = TextAlign.Center)
                 TextButton(onClick = { Repo.reload() }) { Text("Réessayer") }
             }
             else -> Text("Aucune chaîne dans cette sélection.", color = ArkaMuted, textAlign = TextAlign.Center)
@@ -130,7 +130,8 @@ fun LiveScreen() {
 fun ChannelRow(channel: Channel, now: Long, favorite: Boolean, onClick: () -> Unit, onFavorite: () -> Unit) {
     val program = Repo.nowPlaying(channel.epgId, now)
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.fillMaxWidth().focusHighlight(scale = 1f).clickable(onClick = onClick)
+            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ChannelLogo(channel.logo, channel.name, Modifier.size(width = 64.dp, height = 44.dp))

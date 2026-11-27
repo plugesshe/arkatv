@@ -73,6 +73,18 @@ data class PlayItem(
 
 data class Progress(val item: PlayItem, val position: Long, val duration: Long, val updated: Long)
 
+/** Everything a source exposes, in provider order. */
+data class Catalog(
+    val liveCategories: List<Category> = emptyList(),
+    val channels: List<Channel> = emptyList(),
+    val vodCategories: List<Category> = emptyList(),
+    val movies: List<Vod> = emptyList(),
+    val seriesCategories: List<Category> = emptyList(),
+    val series: List<Vod> = emptyList(),
+) {
+    val isEmpty: Boolean get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty()
+}
+
 object PlayerSession {
     var queue: List<PlayItem> = emptyList()
     var index: Int = 0

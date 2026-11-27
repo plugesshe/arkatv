@@ -4,16 +4,55 @@ import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
 import org.json.JSONObject
+import tv.arka.app.data.security.SecretBox
 
-/** Small JSON-in-SharedPreferences persistence for sources, favourites, list and progress. */
+/**
+ * User data that must survive catalogue refreshes: sources, favourites, "Ma liste" and playback
+ * progress. Every value is encrypted with [SecretBox] because stream and playlist URLs embed the
+ * provider credentials. Values written in clear text by ArkaTV 0.1.0 are migrated on first start.
+ */
 object Store {
     private var prefs: SharedPreferences? = null
 
     fun init(context: Context) {
-        if (prefs == null) prefs = context.getSharedPreferences("arkatv", Context.MODE_PRIVATE)
+        if (prefs != null) return
+        val created = context.getSharedPreferences("arkatv", Context.MODE_PRIVATE)
+        SecretBox.init(created)
+        prefs = created
+        migrateLegacy(created)
+    }
+
+    fun resetForTests() {
+        prefs = null
     }
 
     private fun p(): SharedPreferences = prefs ?: error("Store not initialised")
+
+    /** ArkaTV 0.1.0 stored everything in clear text: re-encrypt it in place, losing nothing. */
+    private fun migrateLegacy(prefs: SharedPreferences) {
+        val editor = prefs.edit()
+        var changed = false
+        for ((key, value) in prefs.all) {
+            val isBlob = key == "sources" || key.startsWith("list_") || key.startsWith("progress_")
+            if (isBlob && value is String) {
+                editor.putString("enc_$key", SecretBox.encrypt(value)).remove(key)
+                changed = true
+            } else if (key.startsWith("fav_") && value is Set<*>) {
+                val array = JSONArray()
+                value.forEach { array.put(it.toString()) }
+                editor.putString("enc_$key", SecretBox.encrypt(array.toString())).remove(key)
+                changed = true
+            }
+        }
+        if (changed) editor.commit()
+    }
+
+    private fun readBlob(key: String): String? =
+        p().getString("enc_$key", null)?.let { SecretBox.decrypt(it) }
+
+    private fun writeBlob(key: String, value: String) {
+        p().edit().putString("enc_$key", SecretBox.encrypt(value)).apply()
+    }
 
     var activeSourceId: String?
         get() = p().getString("active", null)
@@ -22,6 +61,16 @@ object Store {
     var liveFormat: String
         get() = p().getString("live_format", "ts") ?: "ts"
         set(value) = p().edit().putString("live_format", value).apply()
+
+    fun lastSync(sourceId: String): Long = p().getLong("sync_$sourceId", 0)
+    fun setLastSync(sourceId: String, time: Long) = p().edit().putLong("sync_$sourceId", time).apply()
+
+    fun lastEpgSync(sourceId: String): Long = p().getLong("epgsync_$sourceId", 0)
+    fun setLastEpgSync(sourceId: String, time: Long) = p().edit().putLong("epgsync_$sourceId", time).apply()
+
+    /** Guide URL discovered inside an M3U playlist header, kept so the guide can refresh on its own. */
+    fun discoveredEpgUrl(sourceId: String): String = readBlob("epgurl_$sourceId").orEmpty()
+    fun setDiscoveredEpgUrl(sourceId: String, url: String) = writeBlob("epgurl_$sourceId", url)
 
     fun loadSources(): List<Source> = readArray("sources") { o ->
         Source(
@@ -40,9 +89,21 @@ object Store {
             .put("user", s.user).put("pass", s.pass).put("epg", s.epgUrl)
     }
 
-    fun loadSet(name: String): Set<String> = p().getStringSet(name, emptySet())?.toSet() ?: emptySet()
+    fun loadFavorites(sourceId: String): Set<String> {
+        val raw = readBlob("fav_$sourceId") ?: return emptySet()
+        return try {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.optString(it) }.toSet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+    }
 
-    fun saveSet(name: String, value: Set<String>) = p().edit().putStringSet(name, value).apply()
+    fun saveFavorites(sourceId: String, value: Set<String>) {
+        val array = JSONArray()
+        value.forEach { array.put(it) }
+        writeBlob("fav_$sourceId", array.toString())
+    }
 
     fun loadMyList(sourceId: String): List<Vod> = readArray("list_$sourceId") { o ->
         Vod(
@@ -87,11 +148,14 @@ object Store {
     }
 
     fun clearSource(sourceId: String) {
-        p().edit().remove("list_$sourceId").remove("progress_$sourceId").remove("fav_$sourceId").apply()
+        p().edit()
+            .remove("enc_list_$sourceId").remove("enc_progress_$sourceId").remove("enc_fav_$sourceId")
+            .remove("enc_epgurl_$sourceId").remove("sync_$sourceId").remove("epgsync_$sourceId")
+            .apply()
     }
 
     private fun <T> readArray(key: String, map: (JSONObject) -> T): List<T> {
-        val raw = p().getString(key, null) ?: return emptyList()
+        val raw = readBlob(key) ?: return emptyList()
         return try {
             val array = JSONArray(raw)
             (0 until array.length()).mapNotNull { i -> array.optJSONObject(i)?.let(map) }
@@ -103,6 +167,6 @@ object Store {
     private fun <T> writeArray(key: String, list: List<T>, map: (T) -> JSONObject) {
         val array = JSONArray()
         list.forEach { array.put(map(it)) }
-        p().edit().putString(key, array.toString()).apply()
+        writeBlob(key, array.toString())
     }
 }

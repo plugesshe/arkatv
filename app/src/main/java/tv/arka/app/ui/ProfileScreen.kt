@@ -116,6 +116,22 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onGrid: (Strin
                 if (Repo.epgLoading) " · guide en cours de mise à jour" else " · guide : ${Repo.epg.size} chaînes"
         }
         Text(status, color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
+        val sync = when {
+            Repo.refreshing -> "Actualisation du catalogue en arrière-plan…"
+            Repo.syncError != null ->
+                "Actualisation impossible (${Repo.syncError}). Le dernier catalogue enregistré reste affiché ; " +
+                    "la lecture demande toujours une connexion."
+            Repo.lastSync > 0 -> "Catalogue actualisé le " + formatDateTime(Repo.lastSync / 1000)
+            else -> ""
+        }
+        if (sync.isNotBlank()) {
+            Text(
+                sync,
+                color = if (Repo.syncError != null && !Repo.refreshing) ArkaError else ArkaMuted,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(horizontal = 16.dp),
+            )
+        }
 
         if (Repo.myList.isNotEmpty()) {
             VodRow("Ma liste", Repo.myList, onOpen) { onGrid("Ma liste", Repo.myList) }
@@ -135,8 +151,7 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onGrid: (Strin
                 ArkaChip(label, liveFormat == value) {
                     if (liveFormat != value) {
                         liveFormat = value
-                        Store.liveFormat = value
-                        Repo.reload()
+                        Repo.applyLiveFormat(value)
                     }
                 }
             }
@@ -220,7 +235,15 @@ fun AddSourceScreen(onBack: (() -> Unit)?, onDone: () -> Unit) {
             Field("URL du guide XMLTV (facultatif)", epg, KeyboardType.Uri) { epg = it }
         }
 
-        error?.let { Text(it, color = Color(0xFFFF6B6B), fontSize = 13.sp) }
+        if (url.trim().startsWith("http://", ignoreCase = true)) {
+            Text(
+                "Cette adresse utilise HTTP : la connexion avec le fournisseur, identifiants compris, " +
+                    "n'est pas chiffrée. Utilisez l'adresse https:// si votre fournisseur en propose une.",
+                color = ArkaMuted,
+                fontSize = 12.sp,
+            )
+        }
+        error?.let { Text(it, color = ArkaError, fontSize = 13.sp) }
 
         Button(
             enabled = !busy && url.isNotBlank() && (type == 1 || (user.isNotBlank() && pass.isNotBlank())),

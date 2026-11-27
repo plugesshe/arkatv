@@ -69,6 +69,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
@@ -90,6 +91,7 @@ import tv.arka.app.ui.formatDuration
 import tv.arka.app.ui.rememberNow
 import java.util.Locale
 
+@androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
     private var queue: List<PlayItem> = emptyList()
@@ -272,6 +274,7 @@ class PlayerActivity : ComponentActivity() {
 
 private class TrackOption(val label: String, val group: Tracks.Group, val index: Int, val selected: Boolean)
 
+@androidx.annotation.OptIn(UnstableApi::class)
 private fun trackOptions(player: Player, type: Int): List<TrackOption> {
     val options = ArrayList<TrackOption>()
     for (group in player.currentTracks.groups) {
@@ -288,6 +291,7 @@ private fun trackOptions(player: Player, type: Int): List<TrackOption> {
     return options
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 private fun selectTrack(player: Player, type: Int, option: TrackOption?) {
     val builder = player.trackSelectionParameters.buildUpon()
     if (option == null) {
@@ -299,6 +303,7 @@ private fun selectTrack(player: Player, type: Int, option: TrackOption?) {
     player.trackSelectionParameters = builder.build()
 }
 
+@androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun PlayerScreen(
     player: ExoPlayer,

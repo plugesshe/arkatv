@@ -12,7 +12,12 @@ object M3u {
     private val attribute = Regex("([\\w-]+)=\"([^\"]*)\"")
     private val videoExtensions = listOf(".mp4", ".mkv", ".avi", ".mov", ".m4v")
 
-    fun load(url: String): Result {
+    fun load(url: String): Result = Http.open(url).use { response ->
+        val body = response.body ?: throw java.io.IOException("Playlist vide")
+        parse(body.charStream())
+    }
+
+    fun parse(input: java.io.Reader): Result {
         val channels = ArrayList<Channel>()
         val movies = ArrayList<Vod>()
         val liveCategories = LinkedHashSet<String>()
@@ -25,8 +30,7 @@ object M3u {
         var epgId = ""
         var pending = false
 
-        Http.open(url).use { response ->
-            val reader = response.body?.charStream()?.buffered() ?: return@use
+        input.buffered().use { reader ->
             reader.forEachLine { raw ->
                 val line = raw.trim()
                 when {

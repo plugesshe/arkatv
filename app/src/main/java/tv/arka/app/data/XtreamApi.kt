@@ -5,6 +5,7 @@ import android.util.JsonToken
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.io.Reader
 import java.net.URLEncoder
 
 class XtreamApi(private val source: Source) {
@@ -15,6 +16,10 @@ class XtreamApi(private val source: Source) {
 
     val epgUrl: String
         get() = "$base/xmltv.php?username=${enc(source.user)}&password=${enc(source.pass)}"
+
+    fun liveUrl(id: String, format: String): String = "$base/live/${source.user}/${source.pass}/$id.$format"
+    fun movieUrl(id: String, ext: String): String = "$base/movie/${source.user}/${source.pass}/$id.$ext"
+    fun episodeUrl(id: String, ext: String): String = "$base/series/${source.user}/${source.pass}/$id.$ext"
 
     private fun enc(value: String): String = URLEncoder.encode(value, "UTF-8")
 
@@ -59,7 +64,7 @@ class XtreamApi(private val source: Source) {
                 logo = m["stream_icon"].orEmpty(),
                 categoryId = m["category_id"].orEmpty(),
                 epgId = m["epg_channel_id"].orEmpty(),
-                url = "$base/live/${source.user}/${source.pass}/$id.$format",
+                url = liveUrl(id, format),
                 number = m["num"]?.toIntOrNull() ?: fallbackNumber,
             )
         }
@@ -74,7 +79,7 @@ class XtreamApi(private val source: Source) {
             name = m["name"].orEmpty(),
             poster = m["stream_icon"].orEmpty(),
             categoryId = m["category_id"].orEmpty(),
-            url = "$base/movie/${source.user}/${source.pass}/$id.$ext",
+            url = movieUrl(id, ext),
             rating = m["rating"].orEmpty(),
             added = m["added"]?.toLongOrNull() ?: 0,
         )
@@ -112,6 +117,22 @@ class XtreamApi(private val source: Source) {
 
     fun seriesDetails(id: String): VodDetails {
         val root = JSONObject(Http.getString(api("get_series_info", "&series_id=$id")))
+        return XtreamJson.seriesDetails(root, ::episodeUrl)
+    }
+
+    private fun backdrop(info: JSONObject): String = XtreamJson.backdrop(info)
+
+    private fun <T> readArray(url: String, map: (Map<String, String>) -> T?): List<T> =
+        Http.open(url).use { response ->
+            val body = response.body ?: return emptyList()
+            XtreamJson.readArray(body.charStream(), map)
+        }
+}
+
+/** Pure parsing of Xtream Codes responses, kept apart from the network for testing. */
+object XtreamJson {
+
+    fun seriesDetails(root: JSONObject, episodeUrl: (id: String, ext: String) -> String): VodDetails {
         val info = root.optJSONObject("info") ?: JSONObject()
         val episodes = ArrayList<Episode>()
         val asObject = root.optJSONObject("episodes")
@@ -119,15 +140,15 @@ class XtreamApi(private val source: Source) {
         if (asObject != null) {
             for (key in asObject.keys()) {
                 val list = asObject.optJSONArray(key) ?: continue
-                readEpisodes(list, key.toIntOrNull() ?: 0, episodes)
+                readEpisodes(list, key.toIntOrNull() ?: 0, episodes, episodeUrl)
             }
         } else if (asArray != null) {
             for (i in 0 until asArray.length()) {
                 val nested = asArray.optJSONArray(i)
                 if (nested != null) {
-                    readEpisodes(nested, i + 1, episodes)
+                    readEpisodes(nested, i + 1, episodes, episodeUrl)
                 } else {
-                    asArray.optJSONObject(i)?.let { readEpisode(it, 1)?.let(episodes::add) }
+                    asArray.optJSONObject(i)?.let { readEpisode(it, 1, episodeUrl)?.let(episodes::add) }
                 }
             }
         }
@@ -142,13 +163,18 @@ class XtreamApi(private val source: Source) {
         )
     }
 
-    private fun readEpisodes(list: JSONArray, season: Int, out: MutableList<Episode>) {
+    private fun readEpisodes(
+        list: JSONArray,
+        season: Int,
+        out: MutableList<Episode>,
+        episodeUrl: (String, String) -> String,
+    ) {
         for (i in 0 until list.length()) {
-            list.optJSONObject(i)?.let { readEpisode(it, season)?.let(out::add) }
+            list.optJSONObject(i)?.let { readEpisode(it, season, episodeUrl)?.let(out::add) }
         }
     }
 
-    private fun readEpisode(o: JSONObject, defaultSeason: Int): Episode? {
+    private fun readEpisode(o: JSONObject, defaultSeason: Int, episodeUrl: (String, String) -> String): Episode? {
         val id = o.optString("id")
         if (id.isBlank()) return null
         val ext = o.optString("container_extension").ifBlank { "mp4" }
@@ -158,13 +184,13 @@ class XtreamApi(private val source: Source) {
             season = o.optString("season").toIntOrNull() ?: defaultSeason,
             number = o.optString("episode_num").toIntOrNull() ?: 0,
             title = o.optString("title"),
-            url = "$base/series/${source.user}/${source.pass}/$id.$ext",
+            url = episodeUrl(id, ext),
             plot = info?.optString("plot").orEmpty(),
             image = info?.optString("movie_image").orEmpty(),
         )
     }
 
-    private fun backdrop(info: JSONObject): String {
+    fun backdrop(info: JSONObject): String {
         val array = info.optJSONArray("backdrop_path")
         if (array != null && array.length() > 0) return array.optString(0)
         val single = info.optString("backdrop_path")
@@ -172,32 +198,29 @@ class XtreamApi(private val source: Source) {
     }
 
     /** Streams a (possibly very large) JSON array of flat objects without loading it in memory. */
-    private fun <T> readArray(url: String, map: (Map<String, String>) -> T?): List<T> {
+    fun <T> readArray(input: Reader, map: (Map<String, String>) -> T?): List<T> {
         val out = ArrayList<T>()
-        Http.open(url).use { response ->
-            val body = response.body ?: return out
-            JsonReader(body.charStream()).use { reader ->
-                reader.isLenient = true
-                if (reader.peek() != JsonToken.BEGIN_ARRAY) return out
-                reader.beginArray()
-                val fields = HashMap<String, String>()
-                while (reader.hasNext()) {
-                    if (reader.peek() != JsonToken.BEGIN_OBJECT) {
-                        reader.skipValue()
-                        continue
-                    }
-                    fields.clear()
-                    reader.beginObject()
-                    while (reader.hasNext()) {
-                        val name = reader.nextName()
-                        when (reader.peek()) {
-                            JsonToken.STRING, JsonToken.NUMBER -> fields[name] = reader.nextString()
-                            else -> reader.skipValue()
-                        }
-                    }
-                    reader.endObject()
-                    map(fields)?.let(out::add)
+        JsonReader(input).use { reader ->
+            reader.isLenient = true
+            if (reader.peek() != JsonToken.BEGIN_ARRAY) return out
+            reader.beginArray()
+            val fields = HashMap<String, String>()
+            while (reader.hasNext()) {
+                if (reader.peek() != JsonToken.BEGIN_OBJECT) {
+                    reader.skipValue()
+                    continue
                 }
+                fields.clear()
+                reader.beginObject()
+                while (reader.hasNext()) {
+                    val name = reader.nextName()
+                    when (reader.peek()) {
+                        JsonToken.STRING, JsonToken.NUMBER -> fields[name] = reader.nextString()
+                        else -> reader.skipValue()
+                    }
+                }
+                reader.endObject()
+                map(fields)?.let(out::add)
             }
         }
         return out

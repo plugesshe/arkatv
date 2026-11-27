@@ -14,13 +14,17 @@ object Epg {
 
     fun load(url: String, wanted: Set<String>): Map<String, List<Program>> {
         val now = System.currentTimeMillis() / 1000
-        val from = now - 2 * 3600
-        val to = now + 24 * 3600
-        val result = HashMap<String, MutableList<Program>>()
+        return Http.open(url).use { response ->
+            val body = response.body ?: return emptyMap()
+            parse(body.byteStream(), wanted, now - 2 * 3600, now + 24 * 3600)
+        }
+    }
 
-        Http.open(url).use { response ->
-            val body = response.body ?: return result
-            val pushback = PushbackInputStream(BufferedInputStream(body.byteStream()), 2)
+    /** Keeps the programmes of [wanted] channels (lower-case ids) that overlap [from, to). */
+    fun parse(stream: InputStream, wanted: Set<String>, from: Long, to: Long): Map<String, List<Program>> {
+        val result = HashMap<String, MutableList<Program>>()
+        run {
+            val pushback = PushbackInputStream(BufferedInputStream(stream), 2)
             val signature = ByteArray(2)
             val read = pushback.read(signature)
             if (read > 0) pushback.unread(signature, 0, read)

@@ -192,7 +192,7 @@ private fun EmptyState() {
                 Text("Chargement du catalogue…", color = ArkaMuted)
             }
             error != null -> {
-                Text(error, color = Color(0xFFFF6B6B), textAlign = TextAlign.Center)
+                Text(error, color = ArkaError, textAlign = TextAlign.Center)
                 TextButton(onClick = { Repo.reload() }) { Text("Réessayer") }
             }
             else -> Text(
@@ -269,7 +269,7 @@ fun MyListButton(vod: Vod) {
 
 @Composable
 private fun ResumeCard(entry: Progress, onClick: () -> Unit) {
-    Column(Modifier.width(200.dp).clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick)) {
+    Column(Modifier.width(200.dp).focusHighlight().clip(RoundedCornerShape(ArkaRadius.md)).clickable(onClick = onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)).background(ArkaCard)) {
             if (entry.item.poster.isNotBlank()) {
                 AsyncImage(

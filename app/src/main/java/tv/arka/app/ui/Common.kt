@@ -49,6 +49,11 @@ private val hourMinute: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 fun formatClock(epochSeconds: Long): String =
     Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).format(hourMinute)
 
+private val dayHourMinute: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm")
+
+fun formatDateTime(epochSeconds: Long): String =
+    Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).format(dayHourMinute)
+
 fun formatDuration(millis: Long): String {
     val total = millis / 1000
     val hours = total / 3600
@@ -131,7 +136,8 @@ fun Poster(vod: Vod, modifier: Modifier = Modifier, onClick: () -> Unit) {
     Box(
         modifier
             .aspectRatio(2f / 3f)
-            .clip(RoundedCornerShape(8.dp))
+            .focusHighlight()
+            .clip(RoundedCornerShape(ArkaRadius.md))
             .background(ArkaCard)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
