@@ -16,6 +16,19 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Android TV
+- Le tremblement de l'écran au changement de tuile est corrigé : l'agrandissement au focus ne modifie
+  plus la position réelle de l'élément, donc les listes ne se recalent plus pendant l'animation.
+- Son de navigation au passage d'un élément à l'autre (suit le réglage « sons système » de l'appareil).
+- Reprise d'un épisode : la saison est rechargée, « Épisodes » et l'épisode suivant sont disponibles ;
+  flèche du bas pour ouvrir les épisodes, commandes affichées ou non.
+- Accueil : le haut de la mise en avant n'est plus coupé.
+
+### Contrôle parental
+- Code à quatre chiffres (seule une empreinte salée est conservée, chiffrée).
+- Profils enfant : les catégories choisies (direct, films, séries) leur sont masquées partout, y compris
+  dans la recherche et la découverte ; pas d'accès aux sources ni aux paramètres.
+- Le code est demandé pour quitter un profil enfant, gérer les profils et modifier ces réglages.
+
 - Build optimisé (non débogable) : l'interface est compilée par l'appareil au lieu d'être interprétée.
 - Lecteur à la télécommande : flèches gauche / droite pour avancer ou reculer (de plus en plus vite si la
   touche reste enfoncée), OK pour la pause, barre de progression utilisable au focus, touches multimédia.

@@ -465,6 +465,11 @@ class PlayerActivity : ComponentActivity() {
                 return true
             }
         }
+        // With the controls shown, Down below the last row of buttons opens the episodes of a series.
+        if (overlay && !modal && keyCode == KeyEvent.KEYCODE_DPAD_DOWN && !live && queue.size > 1) {
+            if (repeat == 0) panelState.intValue = PANEL_QUEUE
+            return true
+        }
         if (overlay || modal) return super.onKeyDown(keyCode, event)
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {

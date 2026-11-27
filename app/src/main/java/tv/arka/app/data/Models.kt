@@ -119,7 +119,8 @@ data class Catalog(
 }
 
 /** A local viewer profile: its own favourites, list, history and search history. No account involved. */
-data class Profile(val id: String, val name: String, val color: Int) {
+/** [kids] marks a child profile: the categories locked by the parental control are hidden from it. */
+data class Profile(val id: String, val name: String, val color: Int, val kids: Boolean = false) {
     val isMain: Boolean get() = id == MAIN_ID
 
     companion object {

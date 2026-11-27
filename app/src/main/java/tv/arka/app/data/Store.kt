@@ -45,14 +45,46 @@ object Store {
         }
 
     fun loadProfiles(): List<Profile> {
-        val stored = readArray("profiles") { o -> Profile(o.optString("id"), o.optString("name"), o.optInt("color")) }
+        val stored = readArray("profiles") { o -> Profile(o.optString("id"), o.optString("name"), o.optInt("color"), o.optBoolean("kids")) }
             .filter { it.id.isNotBlank() }
         return if (stored.any { it.isMain }) stored else listOf(Profile(Profile.MAIN_ID, "Principal", 0)) + stored
     }
 
     fun saveProfiles(list: List<Profile>) = writeArray("profiles", list) { profile ->
-        JSONObject().put("id", profile.id).put("name", profile.name).put("color", profile.color)
+        JSONObject().put("id", profile.id).put("name", profile.name).put("color", profile.color).put("kids", profile.kids)
     }
+
+    // ----- Parental control. The code is shared by every profile; only a salted hash is kept, encrypted.
+
+    fun hasPin(): Boolean = !readBlob("pin").isNullOrBlank()
+
+    /** null removes the code. */
+    fun setPin(pin: String?) {
+        if (pin == null) {
+            writeBlob("pin", "")
+        } else {
+            val salt = java.util.UUID.randomUUID().toString()
+            writeBlob("pin", salt + ":" + pinHash(salt, pin))
+        }
+    }
+
+    fun checkPin(pin: String): Boolean {
+        val stored = readBlob("pin").orEmpty()
+        if (stored.isBlank()) return false
+        val salt = stored.substringBefore(':')
+        return java.security.MessageDigest.isEqual(
+            stored.substringAfter(':').toByteArray(),
+            pinHash(salt, pin).toByteArray(),
+        )
+    }
+
+    private fun pinHash(salt: String, pin: String): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest("$salt:$pin".toByteArray())
+            .joinToString("") { "%02x".format(it) }
+
+    /** Categories hidden from child profiles, as "live:<id>", "movie:<id>" or "series:<id>". */
+    fun loadLockedCategories(sourceId: String): Set<String> = loadStrings("locked_$sourceId").toSet()
+    fun saveLockedCategories(sourceId: String, keys: Set<String>) = saveStrings("locked_$sourceId", keys)
 
     /** Removes everything a deleted profile had stored. */
     fun deleteProfileData(profileId: String) {

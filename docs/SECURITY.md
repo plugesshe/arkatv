@@ -61,3 +61,9 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
   garantit la continuité des installations, pas l'authenticité. Avant toute diffusion plus large, il faut une
   clé de production gardée dans les secrets du dépôt.
 - Chaque build vert de `claude/arkatv-excellence` est publié dans la pré-release `dev` (accord du propriétaire, 27/11/2026).
+
+## Contrôle parental
+
+- Le code n'est jamais conservé : seule une empreinte SHA-256 salée l'est, dans les préférences chiffrées.
+- Les catégories masquées sont filtrées dans les requêtes du catalogue elles-mêmes, pas seulement à l'affichage.
+- Limite connue : un contenu déjà présent dans « Ma liste » ou l'historique d'un profil y reste visible.

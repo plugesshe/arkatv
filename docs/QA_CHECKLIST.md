@@ -139,3 +139,13 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Retour d'une fiche : le focus revient sur l'affiche ouverte.
 - [ ] Téléphone : verrouillage, déverrouillage, zoom à deux doigts.
 - [ ] Films : filtres « Note ≥ 7 », années, « Non vus ».
+
+## Contrôle parental — à vérifier sur appareil
+
+- [ ] Paramètres › Contrôle parental : définir un code (saisie deux fois), le changer, le supprimer.
+- [ ] Saisie du code à la télécommande (flèches + OK) et aux touches numériques.
+- [ ] Catégories masquées : cocher des catégories de direct, de films et de séries.
+- [ ] Profil enfant : ces catégories n'apparaissent ni dans les listes, ni à l'accueil, ni dans la recherche.
+- [ ] Profil enfant : pas d'entrée Sources ni Paramètres ; code demandé pour passer à un autre profil.
+- [ ] Changement de tuile sur TV : plus de tremblement ; son de navigation présent.
+- [ ] Reprise d'un épisode depuis l'accueil : « Épisodes » apparaît, flèche du bas ouvre les épisodes.

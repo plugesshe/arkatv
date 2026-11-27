@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import tv.arka.app.R
 import tv.arka.app.data.Profile
 import tv.arka.app.data.Repo
+import tv.arka.app.data.Store
 
 /**
  * "Qui regarde ?" — local profiles, no account. Each profile has its own favourites, list, history
@@ -50,6 +51,13 @@ fun ProfilesScreen(onDone: () -> Unit) {
     var adding by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf<Profile?>(null) }
     val profiles = Repo.profiles
+    // With a parental code and at least one child profile, the code is asked before entering
+    // any other profile and before managing profiles.
+    val protect = Store.hasPin() && profiles.any { it.kids }
+    var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
+    val guarded: (Boolean, () -> Unit) -> Unit = { needsCode, action ->
+        if (needsCode) pending = action else action()
+    }
 
     Column(
         Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(ArkaTheme.margin),
@@ -85,13 +93,15 @@ fun ProfilesScreen(onDone: () -> Unit) {
                                     if (managing) {
                                         editing = profile
                                     } else {
-                                        Repo.switchProfile(profile)
-                                        onDone()
+                                        guarded(protect && !profile.kids) {
+                                            Repo.switchProfile(profile)
+                                            onDone()
+                                        }
                                     }
                                 },
                             )
                             Text(
-                                profile.name,
+                                if (profile.kids) profile.name + " · enfant" else profile.name,
                                 style = ArkaTheme.type.label,
                                 fontWeight = if (profile.id == Repo.activeProfile.id) FontWeight(700) else FontWeight(500),
                                 color = if (profile.id == Repo.activeProfile.id) ArkaColors.TextPrimary else ArkaColors.TextSecondary,
@@ -122,7 +132,9 @@ fun ProfilesScreen(onDone: () -> Unit) {
         }
 
         Spacer(Modifier.height(ArkaSpacing.lg))
-        SecondaryButton(if (managing) "Terminé" else "Gérer les profils", { managing = !managing })
+        SecondaryButton(if (managing) "Terminé" else "Gérer les profils", {
+            if (managing) managing = false else guarded(protect) { managing = true }
+        })
         if (managing) {
             Text(
                 "Touchez un profil pour le renommer ou le supprimer.",
@@ -160,6 +172,7 @@ fun ProfilesScreen(onDone: () -> Unit) {
 
     editing?.let { profile ->
         var name by remember(profile.id) { mutableStateOf(profile.name) }
+        var kids by remember(profile.id) { mutableStateOf(profile.kids) }
         var confirmDelete by remember(profile.id) { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { editing = null },
@@ -185,6 +198,18 @@ fun ProfilesScreen(onDone: () -> Unit) {
                                 modifier = Modifier.padding(top = ArkaSpacing.sm),
                             )
                         } else {
+                            if (Store.hasPin()) {
+                                TextButton(onClick = { kids = !kids }) {
+                                    Text(if (kids) "Profil enfant : oui" else "Profil enfant : non")
+                                }
+                            } else {
+                                Text(
+                                    "Pour en faire un profil enfant, définissez d'abord un code dans Mon espace › Paramètres › Contrôle parental.",
+                                    color = ArkaColors.TextSecondary,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = ArkaSpacing.sm),
+                                )
+                            }
                             TextButton(onClick = { confirmDelete = true }) {
                                 Text("Supprimer ce profil", color = ArkaColors.RedBright)
                             }
@@ -207,10 +232,27 @@ fun ProfilesScreen(onDone: () -> Unit) {
                 } else {
                     TextButton(enabled = name.isNotBlank(), onClick = {
                         Repo.renameProfile(profile, name)
+                        if (kids != profile.kids) Repo.setProfileKids(profile.id, kids)
                         editing = null
                     }) { Text("Enregistrer") }
                 }
             },
+        )
+    }
+
+    pending?.let { action ->
+        PinDialog(
+            title = "Code parental",
+            onPin = { pin ->
+                if (Store.checkPin(pin)) {
+                    pending = null
+                    action()
+                    true
+                } else {
+                    false
+                }
+            },
+            onDismiss = { pending = null },
         )
     }
 }

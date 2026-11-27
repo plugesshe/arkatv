@@ -90,6 +90,43 @@ object Repo {
     /** Live category ids the user chose to hide. */
     var hiddenCategories by mutableStateOf(setOf<String>())
 
+    /** Categories hidden from child profiles, as "live:<id>", "movie:<id>" or "series:<id>". */
+    var lockedCategories by mutableStateOf(setOf<String>())
+
+    /** The catalogue summary as stored, before the parental filter of the active profile. */
+    private var rawSummary: CatalogStore.Summary? = null
+
+    private fun hiddenNow(): Set<String> = if (activeProfile.kids) lockedCategories else emptySet()
+
+    private fun updateLock() {
+        store?.locked = hiddenNow()
+            .groupBy({ it.substringBefore(':') }, { it.substringAfter(':') })
+            .mapValues { it.value.toSet() }
+    }
+
+    fun setCategoryLocked(kind: String, id: String, locked: Boolean) {
+        val source = active ?: return
+        val key = "$kind:$id"
+        lockedCategories = if (locked) lockedCategories + key else lockedCategories - key
+        Store.saveLockedCategories(source.id, lockedCategories)
+        updateLock()
+        if (activeProfile.kids) {
+            apply(rawSummary)
+            catalogVersion++
+        }
+    }
+
+    fun setProfileKids(profileId: String, kids: Boolean) {
+        profiles = profiles.map { if (it.id == profileId && !it.isMain) it.copy(kids = kids) else it }
+        Store.saveProfiles(profiles)
+        if (activeProfile.id == profileId) {
+            activeProfile = profiles.first { it.id == profileId }
+            updateLock()
+            apply(rawSummary)
+            catalogVersion++
+        }
+    }
+
     /** Xtream account details, as last reported by the provider. */
     var account by mutableStateOf<AccountInfo?>(null)
 
@@ -133,6 +170,8 @@ object Repo {
         hiddenCategories = Store.loadHiddenCategories(source.id)
         watched = Store.loadWatched(source.id)
         followed = Store.loadFollowed(source.id)
+        lockedCategories = Store.loadLockedCategories(source.id)
+        updateLock()
     }
 
     fun switchProfile(profile: Profile) {
@@ -140,15 +179,18 @@ object Repo {
         Store.activeProfileId = profile.id
         profileChosen = true
         active?.let { loadUserData(it) }
+        // A child profile sees the catalogue without the locked categories, and the others see all of it.
+        apply(rawSummary)
+        catalogVersion++
     }
 
     /** Returns the new profile, or null when the limit is reached or the name is empty. */
-    fun addProfile(name: String): Profile? {
+    fun addProfile(name: String, kids: Boolean = false): Profile? {
         val clean = name.trim()
         if (clean.isEmpty() || profiles.size >= Profile.MAX) return null
         val used = profiles.map { it.color }.toSet()
         val color = (0 until Profile.MAX).firstOrNull { it !in used } ?: 0
-        val profile = Profile(java.util.UUID.randomUUID().toString().replace("-", "").take(8), clean, color)
+        val profile = Profile(java.util.UUID.randomUUID().toString().replace("-", "").take(8), clean, color, kids)
         profiles = profiles + profile
         Store.saveProfiles(profiles)
         return profile
@@ -216,16 +258,21 @@ object Repo {
     }
 
     private fun apply(summary: CatalogStore.Summary?) {
-        liveCategories = summary?.liveCategories.orEmpty()
-        channels = summary?.channels.orEmpty()
-        vodCategories = summary?.vodCategories.orEmpty()
-        seriesCategories = summary?.seriesCategories.orEmpty()
-        movieCount = summary?.movieCount ?: 0
-        seriesCount = summary?.seriesCount ?: 0
-        latestMovies = summary?.latestMovies.orEmpty()
-        latestSeries = summary?.latestSeries.orEmpty()
-        movieCategoryCounts = summary?.movieCategoryCounts.orEmpty()
-        seriesCategoryCounts = summary?.seriesCategoryCounts.orEmpty()
+        rawSummary = summary
+        val hidden = hiddenNow()
+        fun gone(kind: String, id: String) = hidden.isNotEmpty() && "$kind:$id" in hidden
+        liveCategories = summary?.liveCategories.orEmpty().filter { !gone(CatalogStore.LIVE, it.id) }
+        channels = summary?.channels.orEmpty().filter { !gone(CatalogStore.LIVE, it.categoryId) }
+        vodCategories = summary?.vodCategories.orEmpty().filter { !gone(CatalogStore.MOVIE, it.id) }
+        seriesCategories = summary?.seriesCategories.orEmpty().filter { !gone(CatalogStore.SERIES, it.id) }
+        val movieCounts = summary?.movieCategoryCounts.orEmpty().filterKeys { !gone(CatalogStore.MOVIE, it) }
+        val seriesCounts = summary?.seriesCategoryCounts.orEmpty().filterKeys { !gone(CatalogStore.SERIES, it) }
+        movieCount = if (hidden.isEmpty()) summary?.movieCount ?: 0 else movieCounts.values.sum()
+        seriesCount = if (hidden.isEmpty()) summary?.seriesCount ?: 0 else seriesCounts.values.sum()
+        latestMovies = summary?.latestMovies.orEmpty().filter { !gone(CatalogStore.MOVIE, it.categoryId) }
+        latestSeries = summary?.latestSeries.orEmpty().filter { !gone(CatalogStore.SERIES, it.categoryId) }
+        movieCategoryCounts = movieCounts
+        seriesCategoryCounts = seriesCounts
         rowCache.clear()
         detailsCache.clear()
     }
@@ -400,6 +447,20 @@ object Repo {
         if (source.type != "xtream") return
         val api = XtreamApi(source)
         channels = channels.map { it.copy(url = api.liveUrl(it.id, format)) }
+        rawSummary = rawSummary?.let { raw ->
+            CatalogStore.Summary(
+                liveCategories = raw.liveCategories,
+                channels = raw.channels.map { it.copy(url = api.liveUrl(it.id, format)) },
+                vodCategories = raw.vodCategories,
+                seriesCategories = raw.seriesCategories,
+                movieCount = raw.movieCount,
+                seriesCount = raw.seriesCount,
+                movieCategoryCounts = raw.movieCategoryCounts,
+                seriesCategoryCounts = raw.seriesCategoryCounts,
+                latestMovies = raw.latestMovies,
+                latestSeries = raw.latestSeries,
+            )
+        }
     }
 
     const val SEARCH_PAGE = 40
@@ -650,13 +711,18 @@ object Repo {
         if (!item.key.startsWith("e:")) return null
         val episodeId = item.key.removePrefix("e:")
         return try {
-            val series = if (item.seriesId.isNotBlank()) {
-                Vod(item.seriesId, VodKind.SERIES, item.title, item.poster, "", "")
+            // Old entries do not name their series: the best name matches are tried, and only a
+            // series that really contains this episode is accepted.
+            val candidates = if (item.seriesId.isNotBlank()) {
+                listOf(Vod(item.seriesId, VodKind.SERIES, item.title, item.poster, "", ""))
             } else {
-                searchVods(VodKind.SERIES, TextNormalizer.normalize(item.title), 0).firstOrNull { it.name == item.title }
+                val wanted = TextNormalizer.normalize(item.title)
+                searchVods(VodKind.SERIES, wanted, 0)
+                    .sortedBy { if (TextNormalizer.normalize(it.name) == wanted) 0 else 1 }
+                    .take(3)
             }
             var found: Pair<List<PlayItem>, Int>? = null
-            if (series != null) {
+            for (series in candidates) {
                 for (episodes in details(series).seasons.values) {
                     val place = episodes.indexOfFirst { it.id == episodeId }
                     if (place >= 0) {
@@ -664,6 +730,7 @@ object Repo {
                         break
                     }
                 }
+                if (found != null) break
             }
             found
         } catch (e: CancellationException) {

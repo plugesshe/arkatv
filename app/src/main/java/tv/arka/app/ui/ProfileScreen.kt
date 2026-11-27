@@ -109,14 +109,16 @@ private fun ProfileMenu(
         SecondaryButton("Changer de profil", onProfiles)
     }
 
-    val entries = listOf(
+    // A child profile has no access to the sources nor to the settings.
+    val kids = Repo.activeProfile.kids
+    val entries = listOfNotNull(
         MenuEntry("Ma liste", if (Repo.myList.isEmpty()) "vide" else "${Repo.myList.size} titres") { onList("Ma liste", Repo.myList) },
         MenuEntry("Séries suivies", if (Repo.followed.isEmpty()) "aucune" else "${Repo.followed.size} séries") {
             onList("Séries suivies", Repo.followed)
         },
         MenuEntry("Historique", if (Repo.progress.isEmpty()) "vide" else "${Repo.progress.size} en cours") { onSection(SECTION_HISTORY) },
-        MenuEntry("Sources", Repo.sources.size.toString()) { onSection(SECTION_SOURCES) },
-        MenuEntry("Paramètres", "") { onSection(SECTION_SETTINGS) },
+        if (kids) null else MenuEntry("Sources", Repo.sources.size.toString()) { onSection(SECTION_SOURCES) },
+        if (kids) null else MenuEntry("Paramètres", "") { onSection(SECTION_SETTINGS) },
     )
 
     if (tv) {
@@ -238,17 +240,21 @@ fun ProfileScreen(
     onOpen: (Vod) -> Unit,
     onList: (String, List<Vod>) -> Unit,
     onProfiles: () -> Unit,
+    onParental: () -> Unit,
 ) {
     var liveFormat by remember { mutableStateOf(Store.liveFormat) }
     var toDelete by remember { mutableStateOf<Source?>(null) }
     var refreshHours by remember { mutableIntStateOf(Store.catalogRefreshHours) }
     var toEdit by remember { mutableStateOf<Source?>(null) }
-    var section by rememberSaveable { mutableIntStateOf(SECTION_MENU) }
-    BackHandler(enabled = section != SECTION_MENU) { section = SECTION_MENU }
+    var chosenSection by rememberSaveable { mutableIntStateOf(SECTION_MENU) }
+    // Switching to a child profile while a protected section is open falls back to the menu.
+    val protectedSection = chosenSection == SECTION_SOURCES || chosenSection == SECTION_SETTINGS
+    val section = if (Repo.activeProfile.kids && protectedSection) SECTION_MENU else chosenSection
+    BackHandler(enabled = section != SECTION_MENU) { chosenSection = SECTION_MENU }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         if (section == SECTION_MENU) {
-            ProfileMenu(onOpen, onList, onProfiles) { section = it }
+            ProfileMenu(onOpen, onList, onProfiles) { chosenSection = it }
         } else {
             ScreenHeader(
                 when (section) {
@@ -256,7 +262,7 @@ fun ProfileScreen(
                     SECTION_HISTORY -> "Historique"
                     else -> "Paramètres"
                 },
-                onBack = { section = SECTION_MENU },
+                onBack = { chosenSection = SECTION_MENU },
             )
         }
 
@@ -345,6 +351,7 @@ fun ProfileScreen(
 
         if (section == SECTION_SETTINGS) {
         UpdateSettings()
+        ParentalSettings(onParental)
         Text(
             "Format des chaînes en direct (Xtream)",
             fontSize = 14.sp,

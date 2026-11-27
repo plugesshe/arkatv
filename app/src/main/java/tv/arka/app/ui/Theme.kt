@@ -2,6 +2,10 @@
 
 package tv.arka.app.ui
 
+import android.view.SoundEffectConstants
+import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.platform.LocalView
+
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -264,6 +268,8 @@ fun Modifier.focusHighlight(
     scale: Float = ArkaMotion.FOCUS_SCALE_CARD,
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
+    val view = LocalView.current
+    val tv = LocalIsTv.current
     val animated by animateFloatAsState(
         targetValue = if (focused) scale else 1f,
         animationSpec = tween(ArkaMotion.FOCUS_MS, easing = ArkaMotion.easing),
@@ -271,23 +277,29 @@ fun Modifier.focusHighlight(
     )
     this
         .zIndex(if (focused) 1f else 0f)
-        .onFocusChanged { focused = it.hasFocus }
-        .graphicsLayer {
-            scaleX = animated
-            scaleY = animated
+        .onFocusChanged {
+            val now = it.hasFocus
+            // Remote navigation sound, played by the system only if its own sounds are enabled.
+            if (now && !focused && tv) view.playSoundEffect(SoundEffectConstants.NAVIGATION_DOWN)
+            focused = now
         }
+        // The enlargement is done while drawing, not with a layer: the element keeps its real bounds,
+        // so lists never re-scroll to follow the animation (which made the screen shake on TV).
         .drawWithContent {
-            drawContent()
-            if (focused) {
-                val stroke = ArkaMotion.focusOutline.toPx()
-                val gap = ArkaMotion.focusOutlineOffset.toPx() + stroke / 2
-                drawRoundRect(
-                    color = ArkaColors.FocusOutline,
-                    topLeft = Offset(-gap, -gap),
-                    size = Size(size.width + 2 * gap, size.height + 2 * gap),
-                    cornerRadius = CornerRadius(radius.toPx() + gap),
-                    style = Stroke(stroke),
-                )
+            val content = this
+            scale(animated, animated) {
+                content.drawContent()
+                if (focused) {
+                    val stroke = ArkaMotion.focusOutline.toPx()
+                    val gap = ArkaMotion.focusOutlineOffset.toPx() + stroke / 2
+                    drawRoundRect(
+                        color = ArkaColors.FocusOutline,
+                        topLeft = Offset(-gap, -gap),
+                        size = Size(size.width + 2 * gap, size.height + 2 * gap),
+                        cornerRadius = CornerRadius(radius.toPx() + gap),
+                        style = Stroke(stroke),
+                    )
+                }
             }
         }
 }

@@ -279,6 +279,7 @@ class CatalogStore(private val database: ArkaDatabase) {
             sql.append(" AND categoryId = ?")
             args.add(categoryId)
         }
+        lockFilter(sql, args, kindName(kind))
         if (filter.minRating > 0) {
             sql.append(" AND CAST(rating AS REAL) >= ?")
             args.add(filter.minRating)
@@ -312,6 +313,20 @@ class CatalogStore(private val database: ArkaDatabase) {
 
     private fun kindName(kind: VodKind): String = if (kind == VodKind.MOVIE) MOVIE else SERIES
 
+    /**
+     * Category ids to leave out of every query, by kind ([LIVE], [MOVIE], [SERIES]).
+     * Set while a child profile is active; empty otherwise.
+     */
+    @Volatile
+    var locked: Map<String, Set<String>> = emptyMap()
+
+    private fun lockFilter(sql: StringBuilder, args: MutableList<Any>, kind: String) {
+        val hidden = locked[kind].orEmpty().take(MAX_LOCKED)
+        if (hidden.isEmpty()) return
+        sql.append(" AND categoryId NOT IN (").append(hidden.joinToString(",") { "?" }).append(")")
+        args.addAll(hidden)
+    }
+
     private fun categoryFilter(sql: StringBuilder, args: MutableList<Any>, categories: Collection<String>) {
         val wanted = categories.take(MAX_CATEGORY_FILTER)
         if (wanted.isEmpty()) return
@@ -326,6 +341,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         args.add(source.id)
         args.add(kindName(kind))
         categoryFilter(sql, args, categories)
+        lockFilter(sql, args, kindName(kind))
         return dao.queryInt(SimpleSQLiteQuery(sql.toString(), args.toTypedArray()))
     }
 
@@ -336,6 +352,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         args.add(source.id)
         args.add(kindName(kind))
         categoryFilter(sql, args, categories)
+        lockFilter(sql, args, kindName(kind))
         sql.append(" ORDER BY pos LIMIT 1 OFFSET ?")
         args.add(position)
         val api = apiOf(source)
@@ -367,6 +384,7 @@ class CatalogStore(private val database: ArkaDatabase) {
             sql.append(" AND search LIKE ?")
             args.add("%$term%")
         }
+        lockFilter(sql, args, kind ?: LIVE)
         sql.append(
             " ORDER BY CASE WHEN search = ? THEN 0 WHEN search LIKE ? THEN 1 WHEN search LIKE ? THEN 2 ELSE 3 END," +
                 " length(search), pos LIMIT ? OFFSET ?"
@@ -411,11 +429,12 @@ class CatalogStore(private val database: ArkaDatabase) {
         }
     }
 
-    private companion object {
+    companion object {
         const val LIVE = "live"
         const val MOVIE = "movie"
         const val SERIES = "series"
         const val BATCH = 500
         const val MAX_CATEGORY_FILTER = 50
+        const val MAX_LOCKED = 400
     }
 }

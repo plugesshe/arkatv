@@ -70,6 +70,7 @@ import tv.arka.app.ui.Logo
 import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
+import tv.arka.app.ui.ParentalScreen
 import tv.arka.app.ui.FocusSlot
 import tv.arka.app.ui.LocalFocusSlot
 import tv.arka.app.ui.installImageLoader
@@ -123,6 +124,7 @@ private sealed interface Screen {
 
     data object Discover : Screen
     data object Profiles : Screen
+    data object Parental : Screen
 
     /** Films or series browsed page by page; [state] keeps the category, order, items and scroll position. */
     class Catalog(val title: String, val kind: VodKind, val state: CatalogGridState) : Screen
@@ -189,9 +191,11 @@ private fun App() {
                 onAddSource = { stack.add(Screen.AddSource) },
                 onDiscover = { stack.add(Screen.Discover) },
                 onProfiles = { stack.add(Screen.Profiles) },
+                onParental = { stack.add(Screen.Parental) },
             )
             Screen.Discover -> DiscoverScreen(onBack = pop, onOpen = openVod)
             Screen.Profiles -> ProfilesScreen(onDone = pop)
+            Screen.Parental -> ParentalScreen(onBack = pop)
             Screen.AddSource -> AddSourceScreen(onBack = pop, onDone = pop)
             is Screen.Detail -> DetailScreen(screen.vod, onBack = pop, onOpen = openVod)
             is Screen.Catalog -> CatalogGridScreen(
@@ -245,6 +249,7 @@ private fun MainShell(
     onAddSource: () -> Unit,
     onDiscover: () -> Unit,
     onProfiles: () -> Unit,
+    onParental: () -> Unit,
 ) {
     // The film and series grids opened from the TV side bar keep their state while the user moves around.
     val movies = remember { CatalogGridState() }
@@ -257,7 +262,7 @@ private fun MainShell(
             Destination.LIVE -> LiveScreen()
             Destination.GUIDE -> GuideScreen()
             Destination.SEARCH -> SearchScreen(onOpen = onOpen, onCatalog = onCatalog)
-            Destination.PROFILE -> ProfileScreen(onAddSource, onOpen, onList, onProfiles)
+            Destination.PROFILE -> ProfileScreen(onAddSource, onOpen, onList, onProfiles, onParental)
             Destination.MOVIES -> CatalogGridScreen("Films", VodKind.MOVIE, movies, onBack = goHome, onOpen = onOpen)
             Destination.SERIES -> CatalogGridScreen("Séries", VodKind.SERIES, series, onBack = goHome, onOpen = onOpen)
             Destination.DISCOVER -> DiscoverScreen(onBack = goHome, onOpen = onOpen)

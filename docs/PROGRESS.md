@@ -166,3 +166,16 @@ Compilé en CI, non testé sur appareil par l'auteur ; le propriétaire teste su
 | Profil enfant et contrôle parental, groupes de chaînes personnalisés | à faire |
 | Textes en ressources FR / EN | à faire |
 | Timeshift, téléchargements, PVR, Cast, multiview, ArkaTV Connect | à faire |
+
+## Lot « contrôle parental, reprise d'épisode, focus TV » (27/11/2026)
+
+Compilé en CI, non testé sur appareil par l'auteur.
+
+| Sujet | État |
+|---|---|
+| Code parental, profils enfant, catégories masquées | fait |
+| Reprise d'un épisode avec sa saison, flèche du bas vers les épisodes | fait |
+| Tremblement au changement de tuile (agrandissement dessiné sans calque) | corrigé à vérifier |
+| Son de navigation sur TV | fait |
+| Replay des chaînes (catch-up) | à faire |
+| Catalogue réorganisé avec TMDB (clé saisie par l'utilisateur), bandes-annonces | à faire |
