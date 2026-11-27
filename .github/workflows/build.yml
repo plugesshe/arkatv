@@ -20,14 +20,14 @@ jobs:
         run: ./gradlew --no-daemon testDebugUnitTest
       - name: Lint
         run: ./gradlew --no-daemon lintDebug
-      - name: Build debug APK
-        run: ./gradlew --no-daemon assembleDebug
+      - name: Build optimised APK
+        run: ./gradlew --no-daemon assembleRelease
       - name: APK checksum
-        run: sha256sum app/build/outputs/apk/debug/app-debug.apk && ls -l app/build/outputs/apk/debug/
+        run: sha256sum app/build/outputs/apk/release/app-release.apk && ls -l app/build/outputs/apk/release/
       - uses: actions/upload-artifact@v4
         with:
-          name: ArkaTV-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: ArkaTV
+          path: app/build/outputs/apk/release/app-release.apk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -42,7 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk ArkaTV-dev.apk
+          cp app/build/outputs/apk/release/app-release.apk ArkaTV-dev.apk
           jq -n \
             --argjson versionCode "$((1000 + GITHUB_RUN_NUMBER))" \
             --arg versionName "$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" \

@@ -125,3 +125,17 @@ un vrai téléphone et une vraie Android TV.
 - [ ] TV : fenêtre utilisable à la télécommande, « Plus tard » la ferme.
 - [ ] Après installation : sources, favoris et progression conservés.
 - [ ] Vérification au lancement désactivée : aucune requête ni fenêtre.
+
+## Lecteur et navigation sur TV — à vérifier sur appareil
+
+- [ ] Film, commandes masquées : gauche / droite déplacent la lecture, la barre compacte s'affiche ; touche tenue : de plus en plus vite.
+- [ ] OK met en pause et affiche les commandes ; elles restent affichées en pause.
+- [ ] Commandes affichées : le focus est sur Pause ; haut atteint la barre de progression, gauche / droite y déplacent la lecture.
+- [ ] « Épisodes » : le focus est sur l'épisode en cours ; Retour ferme le panneau et rend le focus aux commandes.
+- [ ] Une minute avant la fin d'un épisode : carte « Épisode suivant », OK lance le suivant, Retour la masque.
+- [ ] Fin d'épisode : le suivant démarre seul.
+- [ ] Direct : haut / bas changent de chaîne, gauche ouvre la liste avec le focus sur la chaîne en cours.
+- [ ] Barre latérale : OK entre dans la section ; Retour dans le contenu ramène à la barre.
+- [ ] Retour d'une fiche : le focus revient sur l'affiche ouverte.
+- [ ] Téléphone : verrouillage, déverrouillage, zoom à deux doigts.
+- [ ] Films : filtres « Note ≥ 7 », années, « Non vus ».

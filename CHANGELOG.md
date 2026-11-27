@@ -15,6 +15,25 @@
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
+### Android TV
+- Build optimisé (non débogable) : l'interface est compilée par l'appareil au lieu d'être interprétée.
+- Lecteur à la télécommande : flèches gauche / droite pour avancer ou reculer (de plus en plus vite si la
+  touche reste enfoncée), OK pour la pause, barre de progression utilisable au focus, touches multimédia.
+- Les panneaux (épisodes, chaînes, audio et sous-titres, réglages) prennent le focus à l'ouverture ;
+  Retour ferme le panneau, puis les commandes, puis le lecteur.
+- Les commandes restent affichées en pause et tant que la télécommande est utilisée.
+- Barre latérale : OK entre dans la section, Retour revient à la barre, puis à l'accueil.
+- Retour d'une fiche : le focus revient sur l'affiche qui avait été ouverte.
+- Affiches gardées sur disque, sans fondu sur TV.
+
+### Lecteur
+- Épisode suivant proposé une minute avant la fin (« Lire maintenant » ou « Masquer »), enchaînement
+  automatique à la fin.
+- Téléphone : verrouillage de l'écran, et deux doigts pour remplir l'écran ou revenir à l'image entière.
+
+### Catalogue (filtres)
+- Filtres « Note ≥ 7 », par période d'années, et « Non vus » pour les films des sources Xtream.
+
 ### Mises à jour
 - Mise à jour intégrée : vérification au lancement (désactivable) ou manuelle, téléchargement avec contrôle
   SHA-256, puis installeur système. Rien n'est installé sans confirmation.

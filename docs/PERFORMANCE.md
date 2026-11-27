@@ -32,3 +32,14 @@ version d'Android et la taille de la source.
 - La recherche interroge la base par `LIKE` sur une colonne normalisée : chaque requête parcourt la
   table de la source. Temps non mesuré sur gros volume.
 - Volumes cibles (20 000 chaînes, 100 000 films, 30 000 séries) : aucun test de charge exécuté.
+
+## Fluidité sur Android TV (27/11/2026)
+
+- Les builds publiés sont désormais du type `release`, non débogable : ART compile le code et installe
+  les profils de démarrage fournis par Compose. Un build débogable est interprété et saccade.
+- R8 n'est pas activé : à activer après une validation sur appareil, car une règle manquante casserait
+  le lancement et la mise à jour intégrée ne pourrait pas réparer.
+- Images : une requête par image mémorisée, cache disque de 256 Mo indépendant des en-têtes du
+  fournisseur, pas de fondu sur TV, titre de secours dessiné seulement si l'image manque.
+- Recherche dans le lecteur à la télécommande sur l'image clé la plus proche.
+- Aucune mesure chiffrée n'a été prise.

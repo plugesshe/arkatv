@@ -20,6 +20,7 @@ import tv.arka.app.data.Program
 import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
+import tv.arka.app.data.VodFilter
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.VodSort
 import tv.arka.app.data.db.ArkaDatabase
@@ -183,6 +184,24 @@ class CatalogStoreTest {
         assertEquals(listOf("Séries"), summary.seriesCategories.map { it.name })
         assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi"), summary.latestMovies.map { it.name })
         assertEquals(listOf("Ombres de Verre"), summary.latestSeries.map { it.name })
+    }
+
+    @Test
+    fun pagesCanBeNarrowedByRatingYearsAndWatchedTitles() = runBlocking {
+        store.save(xtream, catalog)
+        suspend fun names(filter: VodFilter) =
+            store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, null, 10, 0, filter).map { it.name }
+        assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi"), names(VodFilter(minRating = 7.0)))
+        assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi"), names(VodFilter(yearFrom = 2020)))
+        assertEquals(listOf("Héritage"), names(VodFilter(yearFrom = 2010, yearTo = 2019)))
+        // A title without a year never matches a range, even an open one.
+        assertEquals(listOf("Héritage"), names(VodFilter(yearFrom = 1, yearTo = 2019)))
+        assertEquals(
+            listOf("Héritage", "Le Dernier Convoi", "L'Héritier"),
+            names(VodFilter(excludeIds = listOf("10"))),
+        )
+        assertEquals(listOf("Le Dernier Convoi"), names(VodFilter(minRating = 7.0, excludeIds = listOf("10"))))
+        assertEquals(4, names(VodFilter.NONE).size)
     }
 
     @Test

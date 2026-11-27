@@ -11,6 +11,7 @@ import tv.arka.app.data.Program
 import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
+import tv.arka.app.data.VodFilter
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.VodSort
 import tv.arka.app.data.XtreamApi
@@ -268,6 +269,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         descending: Boolean?,
         limit: Int,
         offset: Int,
+        filter: VodFilter = VodFilter.NONE,
     ): List<Vod> {
         val sql = StringBuilder("SELECT * FROM vods WHERE sourceId = ? AND kind = ?")
         val args = ArrayList<Any>()
@@ -276,6 +278,21 @@ class CatalogStore(private val database: ArkaDatabase) {
         if (categoryId != null) {
             sql.append(" AND categoryId = ?")
             args.add(categoryId)
+        }
+        if (filter.minRating > 0) {
+            sql.append(" AND CAST(rating AS REAL) >= ?")
+            args.add(filter.minRating)
+        }
+        if (filter.yearFrom > 0 || filter.yearTo > 0) {
+            // Titles without a year never match a year range.
+            sql.append(" AND CAST(year AS INTEGER) BETWEEN ? AND ?")
+            args.add(if (filter.yearFrom > 0) filter.yearFrom else 1)
+            args.add(if (filter.yearTo > 0) filter.yearTo else 9999)
+        }
+        val excluded = filter.excludeIds.take(VodFilter.MAX_EXCLUDED)
+        if (excluded.isNotEmpty()) {
+            sql.append(" AND streamId NOT IN (").append(excluded.joinToString(",") { "?" }).append(")")
+            args.addAll(excluded)
         }
         val down = descending ?: (sort != VodSort.NAME && sort != VodSort.PROVIDER)
         val direction = if (down) "DESC" else "ASC"

@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 import tv.arka.app.data.Category
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Vod
+import tv.arka.app.data.VodFilter
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.VodSort
 
@@ -55,6 +56,15 @@ class CatalogGridState(initialSort: VodSort = VodSort.RECENT, initialCategory: S
     /** null = the natural direction of the order (A → Z for names, newest or best first otherwise). */
     var descending by mutableStateOf<Boolean?>(null)
     var categoryId by mutableStateOf(initialCategory)
+
+    /** Only titles rated 7 or more by the source. */
+    var topRated by mutableStateOf(false)
+
+    /** Index in [yearRanges]; 0 means every year. */
+    var years by mutableStateOf(0)
+
+    /** Films only: leave out the ones marked as watched. */
+    var unwatched by mutableStateOf(false)
     val items = mutableStateListOf<Vod>()
     var more by mutableStateOf(false)
     var loading by mutableStateOf(true)
@@ -64,6 +74,27 @@ class CatalogGridState(initialSort: VodSort = VodSort.RECENT, initialCategory: S
     internal var loadedQuery: String? = null
     internal var token = 0
     internal var loadingMore = false
+}
+
+private class YearRange(val label: String, val from: Int, val to: Int)
+
+private val yearRanges = listOf(
+    YearRange("Toutes", 0, 0),
+    YearRange("2020 et après", 2020, 0),
+    YearRange("2010 – 2019", 2010, 2019),
+    YearRange("2000 – 2009", 2000, 2009),
+    YearRange("1980 – 1999", 1980, 1999),
+    YearRange("Avant 1980", 1, 1979),
+)
+
+private fun filterOf(state: CatalogGridState, kind: VodKind): VodFilter {
+    val range = yearRanges[state.years.coerceIn(0, yearRanges.lastIndex)]
+    return VodFilter(
+        minRating = if (state.topRated) 7.0 else 0.0,
+        yearFrom = range.from,
+        yearTo = range.to,
+        excludeIds = if (state.unwatched && kind == VodKind.MOVIE) Repo.watchedMovieIds() else emptyList(),
+    )
 }
 
 private val sortOptions = listOf(
@@ -104,15 +135,19 @@ fun CatalogGridScreen(
     val category = categories.firstOrNull { it.id == state.categoryId }
     var showSort by remember { mutableStateOf(false) }
     var showCategories by remember { mutableStateOf(false) }
+    var showYears by remember { mutableStateOf(false) }
+    // Watched films are known by their stream id, which only Xtream sources provide.
+    val canFilterWatched = kind == VodKind.MOVIE && Repo.active?.type == "xtream"
+    val filtered = state.topRated || state.years != 0 || (state.unwatched && canFilterWatched)
 
-    val query = "${state.sort}|${state.descending}|${state.categoryId}"
+    val query = "${state.sort}|${state.descending}|${state.categoryId}|${state.topRated}|${state.years}|${state.unwatched}"
     val key = "${Repo.active?.id}|${Repo.catalogVersion}|$query"
 
     LaunchedEffect(key) {
         if (state.loadedKey == key) return@LaunchedEffect
         state.token++
         state.loading = true
-        val first = Repo.vodPage(kind, state.categoryId, state.sort, state.descending, 0)
+        val first = Repo.vodPage(kind, state.categoryId, state.sort, state.descending, 0, filterOf(state, kind))
         val queryChanged = state.loadedQuery != null && state.loadedQuery != query
         state.items.clear()
         state.items.addAll(first)
@@ -130,7 +165,7 @@ fun CatalogGridScreen(
         val mine = state.token
         scope.launch {
             try {
-                val next = Repo.vodPage(kind, state.categoryId, state.sort, state.descending, state.items.size)
+                val next = Repo.vodPage(kind, state.categoryId, state.sort, state.descending, state.items.size, filterOf(state, kind))
                 if (mine == state.token) {
                     state.items.addAll(next)
                     state.more = next.size == Repo.GRID_PAGE
@@ -142,7 +177,18 @@ fun CatalogGridScreen(
     }
 
     val shown = if (category != null) counts[category.id] ?: 0 else total
-    val countLabel = if (category != null) "$shown / $total" else total.toString()
+    // The number of matches of a filter is not known in advance: only what is certain is shown.
+    val countLabel = when {
+        filtered -> "filtré"
+        category != null -> "$shown / $total"
+        else -> total.toString()
+    }
+    val yearsChip = "Années : " + yearRanges[state.years.coerceIn(0, yearRanges.lastIndex)].label
+    val filterChips: @Composable () -> Unit = {
+        ArkaChip("Note ≥ 7", state.topRated) { state.topRated = !state.topRated }
+        ArkaChip(yearsChip, state.years != 0) { showYears = true }
+        if (canFilterWatched) ArkaChip("Non vus", state.unwatched) { state.unwatched = !state.unwatched }
+    }
     val sortChip = "Tri : " + sortLabel(state.sort) + if (isDescending(state)) " ↓" else " ↑"
 
     val grid: @Composable () -> Unit = {
@@ -198,7 +244,10 @@ fun CatalogGridScreen(
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
                     )
-                    ArkaChip(sortChip, false) { showSort = true }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        filterChips()
+                        ArkaChip(sortChip, false) { showSort = true }
+                    }
                 }
                 grid()
             }
@@ -213,14 +262,24 @@ fun CatalogGridScreen(
             ) {
                 item { ArkaChip("Catégorie : " + (category?.name ?: "Toutes"), category != null) { showCategories = true } }
                 item { ArkaChip(sortChip, false) { showSort = true } }
-                if (category != null) {
+                item { ArkaChip("Note ≥ 7", state.topRated) { state.topRated = !state.topRated } }
+                item { ArkaChip(yearsChip, state.years != 0) { showYears = true } }
+                if (canFilterWatched) {
+                    item { ArkaChip("Non vus", state.unwatched) { state.unwatched = !state.unwatched } }
+                }
+                if (category != null || filtered) {
                     item {
                         Text(
                             "Effacer le filtre",
                             color = ArkaColors.TextSecondary,
                             style = ArkaTheme.type.label,
                             modifier = Modifier.clip(RoundedCornerShape(ArkaRadius.sm))
-                                .clickable { state.categoryId = null }.padding(8.dp),
+                                .clickable {
+                                    state.categoryId = null
+                                    state.topRated = false
+                                    state.years = 0
+                                    state.unwatched = false
+                                }.padding(8.dp),
                         )
                     }
                 }
@@ -246,6 +305,17 @@ fun CatalogGridScreen(
                 val down = isDescending(state)
                 SegmentButton("Décroissant", down, { state.descending = true }, Modifier.weight(1f))
                 SegmentButton("Croissant", !down, { state.descending = false }, Modifier.weight(1f))
+            }
+        }
+    }
+
+    if (showYears) {
+        ArkaSheet("Années", onDismiss = { showYears = false }) {
+            yearRanges.forEachIndexed { place, range ->
+                SheetOption(range.label, state.years == place, onClick = {
+                    state.years = place
+                    showYears = false
+                })
             }
         }
     }

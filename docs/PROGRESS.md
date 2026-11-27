@@ -150,3 +150,19 @@ n'est affichée dans l'application.
 
 Écrite et compilée, jamais exécutée sur appareil. Chaque build vert de la branche est publié dans la
 pré-release `dev` (accord du propriétaire, 27/11/2026).
+
+## Lot « Android TV, lecteur, filtres » (27/11/2026)
+
+Compilé en CI, non testé sur appareil par l'auteur ; le propriétaire teste sur sa TV.
+
+| Sujet | État |
+|---|---|
+| Build optimisé non débogable (R8 non activé) | fait |
+| Lecteur à la télécommande (touches, focus des panneaux, barre de progression, Retour) | refait |
+| Épisode suivant une minute avant la fin | fait |
+| Verrouillage et zoom à deux doigts (téléphone) | fait |
+| Barre latérale TV et retour du focus sur l'affiche ouverte | fait |
+| Filtres du catalogue : note ≥ 7, années, non vus (films Xtream) | fait |
+| Profil enfant et contrôle parental, groupes de chaînes personnalisés | à faire |
+| Textes en ressources FR / EN | à faire |
+| Timeshift, téléchargements, PVR, Cast, multiview, ArkaTV Connect | à faire |

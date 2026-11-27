@@ -441,8 +441,18 @@ object Repo {
     }
 
     /** One page of films or series ([GRID_PAGE] items), optionally limited to a category. */
-    suspend fun vodPage(kind: VodKind, categoryId: String?, sort: VodSort, descending: Boolean?, offset: Int): List<Vod> =
-        vodRange(kind, categoryId, sort, descending, GRID_PAGE, offset)
+    suspend fun vodPage(
+        kind: VodKind,
+        categoryId: String?,
+        sort: VodSort,
+        descending: Boolean?,
+        offset: Int,
+        filter: VodFilter = VodFilter.NONE,
+    ): List<Vod> = vodRange(kind, categoryId, sort, descending, GRID_PAGE, offset, filter)
+
+    /** Ids of the films marked as watched, most recent last, for the "not watched" filter. */
+    fun watchedMovieIds(): List<String> =
+        watched.filter { it.startsWith("m:") }.map { it.removePrefix("m:") }.takeLast(VodFilter.MAX_EXCLUDED)
 
     private suspend fun vodRange(
         kind: VodKind,
@@ -451,12 +461,13 @@ object Repo {
         descending: Boolean?,
         limit: Int,
         offset: Int,
+        filter: VodFilter = VodFilter.NONE,
     ): List<Vod> {
         val source = active ?: return emptyList()
         val catalogStore = store ?: return emptyList()
         return withContext(Dispatchers.IO) {
             try {
-                catalogStore.vodPage(source, kind, categoryId, sort, descending, limit, offset)
+                catalogStore.vodPage(source, kind, categoryId, sort, descending, limit, offset, filter)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

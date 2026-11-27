@@ -243,9 +243,17 @@ fun ArkaImage(
     contentScale: ContentScale = ContentScale.Crop,
     alignment: Alignment = Alignment.Center,
     contentDescription: String? = null,
+    onError: (() -> Unit)? = null,
 ) {
+    val context = LocalContext.current
+    val tv = LocalIsTv.current
+    // Built once per image; no cross-fade on TV, where it costs frames while rows scroll.
+    val request = remember(url, tv) {
+        ImageRequest.Builder(context).data(url).crossfade(if (tv) 0 else 150).build()
+    }
     AsyncImage(
-        model = ImageRequest.Builder(LocalContext.current).data(url).crossfade(150).build(),
+        model = request,
+        onError = { onError?.invoke() },
         contentDescription = contentDescription,
         contentScale = contentScale,
         alignment = alignment,

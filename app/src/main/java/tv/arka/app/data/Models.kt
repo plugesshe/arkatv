@@ -25,6 +25,22 @@ data class Channel(
 enum class VodKind { MOVIE, SERIES }
 
 /** Orders offered when browsing films or series. PROVIDER keeps the order sent by the source. */
+/** Optional narrowing of a catalogue page. Zero or empty means "no constraint". */
+data class VodFilter(
+    val minRating: Double = 0.0,
+    val yearFrom: Int = 0,
+    val yearTo: Int = 0,
+    /** Stream ids to leave out (titles already watched). */
+    val excludeIds: List<String> = emptyList(),
+) {
+    val active: Boolean get() = minRating > 0 || yearFrom > 0 || yearTo > 0 || excludeIds.isNotEmpty()
+
+    companion object {
+        val NONE = VodFilter()
+        const val MAX_EXCLUDED = 500
+    }
+}
+
 enum class VodSort { PROVIDER, NAME, RECENT, YEAR, RATING }
 
 data class Vod(

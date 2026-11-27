@@ -70,6 +70,15 @@ import tv.arka.app.ui.Logo
 import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
+import tv.arka.app.ui.FocusSlot
+import tv.arka.app.ui.LocalFocusSlot
+import tv.arka.app.ui.installImageLoader
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
 import tv.arka.app.ui.UpdatePrompt
 import tv.arka.app.ui.focusHighlight
 import tv.arka.app.ui.isTelevision
@@ -79,6 +88,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
         Repo.init(applicationContext)
+        installImageLoader(applicationContext)
         val television = isTelevision()
         setContent {
             ArkaTheme(isTv = television) {
@@ -126,10 +136,15 @@ private fun App() {
     var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     // Keeps each screen's saved state (scroll positions, selected filters) while another one is on top.
     val holder = rememberSaveableStateHolder()
+    // TV: one focus memory per screen of the stack.
+    val tv = LocalIsTv.current
+    val slots = remember { HashMap<Int, FocusSlot>() }
     val pop: () -> Unit = {
         if (stack.size > 1) {
             holder.removeState("screen-${stack.lastIndex}")
+            slots.remove(stack.lastIndex)
             stack.removeAt(stack.lastIndex)
+            slots[stack.lastIndex]?.restore = true
         }
     }
 
@@ -159,7 +174,11 @@ private fun App() {
     }
 
     val index = stack.lastIndex
+    val slot = if (tv) slots.getOrPut(index) { FocusSlot() } else null
     holder.SaveableStateProvider("screen-$index") {
+        CompositionLocalProvider(LocalFocusSlot provides slot) {
+        // The main screen manages its own focus (side bar); the others start on their first element.
+        TvInitialFocus(enabled = tv && index > 0) {
         when (val screen = stack[index]) {
             Screen.Main -> MainShell(
                 destination = destination,
@@ -183,6 +202,35 @@ private fun App() {
                 onOpen = openVod,
             )
             is Screen.StaticGrid -> GridScreen(screen.title, screen.items, onBack = pop, onOpen = openVod)
+        }
+        }
+        }
+    }
+}
+
+/**
+ * TV: a screen that has just appeared gets the focus on its first element, unless something inside
+ * it (a card the user is coming back to) took it first. Content that is still loading is waited for.
+ */
+@Composable
+private fun TvInitialFocus(enabled: Boolean, tick: Int = 0, content: @Composable () -> Unit) {
+    if (!enabled) {
+        content()
+    } else {
+        val requester = remember { FocusRequester() }
+        var focused by remember { mutableStateOf(false) }
+        val focusedNow by rememberUpdatedState(focused)
+        Box(Modifier.fillMaxSize().focusRequester(requester).onFocusChanged { focused = it.hasFocus }) { content() }
+        LaunchedEffect(tick) {
+            for (attempt in 0 until 20) {
+                delay(if (attempt == 0) 50 else 120)
+                if (focusedNow) break
+                try {
+                    requester.requestFocus()
+                } catch (e: IllegalStateException) {
+                    // Nothing to focus yet.
+                }
+            }
         }
     }
 }
@@ -284,6 +332,19 @@ private fun BottomBar(current: Destination, onSelect: (Destination) -> Unit) {
 @Composable
 private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, content: @Composable () -> Unit) {
     var expanded by remember { mutableStateOf(false) }
+    // Incremented each time the content must take the focus: at start and after a choice in the bar.
+    var enterTick by remember { mutableIntStateOf(0) }
+    var contentFocused by remember { mutableStateOf(false) }
+    val currentItem = remember { FocusRequester() }
+    // Back inside the content opens the side bar on the current section; Back in the bar then
+    // returns to the home screen, and from there leaves the app.
+    BackHandler(enabled = contentFocused) {
+        try {
+            currentItem.requestFocus()
+        } catch (e: IllegalStateException) {
+            // The bar is always laid out; nothing else to do.
+        }
+    }
     val width by animateDpAsState(
         targetValue = if (expanded) ArkaSize.tvSidebarExpanded else ArkaSize.tvSidebarCollapsed,
         animationSpec = tween(ArkaMotion.FOCUS_MS, easing = ArkaMotion.easing),
@@ -299,8 +360,11 @@ private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, conte
     }
 
     Box(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize().padding(start = ArkaSize.tvSidebarCollapsed)) {
-            content()
+        Box(
+            Modifier.fillMaxSize().padding(start = ArkaSize.tvSidebarCollapsed)
+                .onFocusChanged { contentFocused = it.hasFocus }
+        ) {
+            TvInitialFocus(enabled = true, tick = enterTick, content = content)
             ConnectionBanner(Modifier.align(Alignment.TopEnd))
         }
         if (expanded) {
@@ -321,10 +385,15 @@ private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, conte
                 val selected = item == current
                 Row(
                     Modifier.fillMaxWidth().height(ArkaSize.tvControlMin)
+                        .then(if (selected) Modifier.focusRequester(currentItem) else Modifier)
                         .focusHighlight(ArkaRadius.sm, 1f)
                         .clip(RoundedCornerShape(ArkaRadius.sm))
                         .background(if (selected) ArkaColors.SurfaceHigh else Color.Transparent)
-                        .clickable { onSelect(item) }
+                        .clickable {
+                            // OK chooses the section and goes straight into it.
+                            onSelect(item)
+                            enterTick++
+                        }
                         .padding(horizontal = 7.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {

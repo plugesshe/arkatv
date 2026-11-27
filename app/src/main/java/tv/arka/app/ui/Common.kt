@@ -1,5 +1,18 @@
 package tv.arka.app.ui
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import coil.Coil
+import coil.ImageLoader
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
+
 import android.app.UiModeManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -179,30 +192,51 @@ fun vodMeta(vod: Vod): String {
  */
 @Composable
 fun Poster(vod: Vod, modifier: Modifier = Modifier, highlight: String = "", onClick: () -> Unit) {
+    var failed by remember(vod.poster) { mutableStateOf(false) }
+    val slot = LocalFocusSlot.current
+    val slotKey = "${vod.kind}:${vod.id}"
+    val requester = remember { FocusRequester() }
+    // Back from a detail screen on TV: the focus returns to the card that was opened.
+    if (slot != null && slot.restore && slot.key == slotKey) {
+        LaunchedEffect(Unit) {
+            slot.restore = false
+            try {
+                requester.requestFocus()
+            } catch (e: IllegalStateException) {
+                // Not attached yet: the screen falls back to its first element.
+            }
+        }
+    }
     Column(modifier) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
+                .focusRequester(requester)
                 .focusHighlight()
                 .clip(RoundedCornerShape(ArkaRadius.sm))
                 .background(ArkaColors.Surface)
-                .clickable(onClick = onClick),
+                .clickable {
+                    slot?.key = slotKey
+                    onClick()
+                },
             contentAlignment = Alignment.BottomStart,
         ) {
-            Text(
-                vod.name.uppercase(),
-                color = ArkaColors.TextSecondary,
-                fontFamily = ArkaDisplayFont,
-                fontWeight = FontWeight(800),
-                fontSize = 18.sp,
-                lineHeight = 18.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(8.dp),
-            )
-            if (vod.poster.isNotBlank()) {
-                ArkaImage(vod.poster, Modifier.fillMaxSize())
+            // The title is only drawn in place of a missing or broken image.
+            if (vod.poster.isBlank() || failed) {
+                Text(
+                    vod.name.uppercase(),
+                    color = ArkaColors.TextSecondary,
+                    fontFamily = ArkaDisplayFont,
+                    fontWeight = FontWeight(800),
+                    fontSize = 18.sp,
+                    lineHeight = 18.sp,
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(8.dp),
+                )
+            } else {
+                ArkaImage(vod.poster, Modifier.fillMaxSize(), onError = { failed = true })
             }
         }
         Text(
@@ -282,4 +316,40 @@ fun ChannelLogo(url: String, name: String, modifier: Modifier = Modifier) {
             Text(name.take(3).uppercase(), color = ArkaColors.TextSecondary, style = ArkaTheme.type.label)
         }
     }
+}
+
+/**
+ * Remembers, for one screen of the navigation stack on TV, which card was opened, so that the
+ * focus can be given back to it when the user returns.
+ */
+class FocusSlot {
+    var key: String? = null
+    var restore: Boolean = false
+}
+
+val LocalFocusSlot = compositionLocalOf<FocusSlot?> { null }
+
+private var imageLoaderInstalled = false
+
+/**
+ * One image loader for the whole app: posters are kept on disk whatever the provider's cache
+ * headers say, so rows fill instantly the second time, and memory use stays bounded on TV boxes.
+ */
+fun installImageLoader(context: Context) {
+    if (imageLoaderInstalled) return
+    imageLoaderInstalled = true
+    val app = context.applicationContext
+    Coil.setImageLoader(
+        ImageLoader.Builder(app)
+            .memoryCache { MemoryCache.Builder(app).maxSizePercent(0.20).build() }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(app.cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(256L * 1024 * 1024)
+                    .build()
+            }
+            .respectCacheHeaders(false)
+            .allowRgb565(true)
+            .build()
+    )
 }
