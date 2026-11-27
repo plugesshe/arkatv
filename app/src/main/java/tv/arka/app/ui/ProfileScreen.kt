@@ -344,6 +344,7 @@ fun ProfileScreen(
         }
 
         if (section == SECTION_SETTINGS) {
+        UpdateSettings()
         Text(
             "Format des chaînes en direct (Xtream)",
             fontSize = 14.sp,

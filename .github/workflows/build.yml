@@ -35,6 +35,27 @@ jobs:
           path: |
             app/build/reports/
           if-no-files-found: ignore
+      # In-app updates: the app reads version.json from the "dev" pre-release. Publishing is off until
+      # the repository variable PUBLISH_DEV_BUILDS is set to "true".
+      - name: Publish the build for in-app updates
+        if: github.ref == 'refs/heads/claude/arkatv-excellence' && vars.PUBLISH_DEV_BUILDS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk ArkaTV-dev.apk
+          jq -n \
+            --argjson versionCode "$((1000 + GITHUB_RUN_NUMBER))" \
+            --arg versionName "$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)" \
+            --arg sha256 "$(sha256sum ArkaTV-dev.apk | cut -d' ' -f1)" \
+            --argjson size "$(stat -c %s ArkaTV-dev.apk)" \
+            --arg notes "$(git log -1 --pretty=%s)" \
+            '{versionCode: $versionCode, versionName: $versionName, sha256: $sha256, size: $size, notes: $notes}' > version.json
+          cat version.json
+          gh release view dev >/dev/null 2>&1 || gh release create dev --prerelease --target "$GITHUB_SHA" \
+            --title "ArkaTV (builds de développement)" \
+            --notes "Builds de debug en cours de développement, utilisés par la mise à jour intégrée. Instables par nature."
+          gh release upload dev ArkaTV-dev.apk --clobber
+          gh release upload dev version.json --clobber
       # The rolling "latest" pre-release is only refreshed from the validated 0.1 branch,
       # never from work-in-progress branches.
       - name: Publish APK as the "latest" pre-release

@@ -15,7 +15,8 @@ android {
         applicationId = "tv.arka.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 13
+        // CI builds get an increasing build number so that each one installs over the previous.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull()?.let { 1000 + it } ?: 13
         versionName = "0.2.0-dev"
     }
     signingConfigs {

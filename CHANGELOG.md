@@ -15,6 +15,10 @@
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
+### Mises à jour
+- Mise à jour intégrée : vérification au lancement (désactivable) ou manuelle, téléchargement avec contrôle
+  SHA-256, puis installeur système. Rien n'est installé sans confirmation.
+
 ### Sources
 - Ajout d'une source en trois étapes : type, connexion vérifiée avant enregistrement, résumé du contenu trouvé.
 - Identifiants refusés distingués d'un serveur injoignable.

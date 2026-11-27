@@ -116,3 +116,12 @@ un vrai téléphone et une vraie Android TV.
 - [ ] TV : tout le parcours à la télécommande, saisie au clavier virtuel.
 - [ ] Mon espace → Sources : état, actualiser, renommer, supprimer.
 - [ ] Mode avion avec catalogue en cache : bandeau « Hors connexion », « Réessayer » relance.
+
+## Mise à jour intégrée — à vérifier sur appareil
+
+- [ ] Paramètres → Mises à jour : version installée affichée, « Vérifier maintenant » répond.
+- [ ] Build plus récent publié : fenêtre au lancement, « Installer » télécharge puis ouvre l'installeur.
+- [ ] Première fois : Android demande d'autoriser ArkaTV à installer des applications.
+- [ ] TV : fenêtre utilisable à la télécommande, « Plus tard » la ferme.
+- [ ] Après installation : sources, favoris et progression conservés.
+- [ ] Vérification au lancement désactivée : aucune requête ni fenêtre.

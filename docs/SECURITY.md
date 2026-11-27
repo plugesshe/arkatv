@@ -51,3 +51,13 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
   pour garantir qu'aucune URL complète n'y apparaît.
 - En mémoire, le catalogue contient les URLs de flux en clair pendant l'exécution.
 - Pas encore de politique HTTP explicite par source (accepter / refuser), seulement un avertissement.
+
+## Mise à jour intégrée
+
+- L'application lit `version.json` puis télécharge l'APK depuis la pré-release `dev` du dépôt GitHub public,
+  en HTTPS. Aucune donnée n'est envoyée ; la vérification au lancement se désactive dans les paramètres.
+- L'APK reçu est comparé au SHA-256 annoncé, puis remis à l'installeur système, qui demande confirmation.
+- Limite connue : les builds sont signés avec la clé de debug conservée dans le dépôt, donc publique. Elle
+  garantit la continuité des installations, pas l'authenticité. Avant toute diffusion plus large, il faut une
+  clé de production gardée dans les secrets du dépôt.
+- La publication est conditionnée à la variable de dépôt `PUBLISH_DEV_BUILDS`.

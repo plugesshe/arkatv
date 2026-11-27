@@ -104,6 +104,11 @@ object Store {
         get() = p().getInt("refresh_hours", 12)
         set(value) = p().edit().putInt("refresh_hours", value).apply()
 
+    /** Whether the app looks for a newer build when it opens. */
+    var autoUpdateCheck: Boolean
+        get() = p().getBoolean("auto_update", true)
+        set(value) = p().edit().putBoolean("auto_update", value).apply()
+
     fun lastSync(sourceId: String): Long = p().getLong("sync_$sourceId", 0)
     fun setLastSync(sourceId: String, time: Long) = p().edit().putLong("sync_$sourceId", time).apply()
 

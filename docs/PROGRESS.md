@@ -145,3 +145,8 @@ les maquettes Claude Design que l'utilisateur prépare pour mobile et TV, puis r
 
 Intégrée à `ROADMAP.md` en P2 (timeshift) et P4. Rien n'est commencé ; aucune action correspondante
 n'est affichée dans l'application.
+
+## Mise à jour intégrée
+
+Écrite et compilée, jamais exécutée sur appareil. La publication des builds (pré-release `dev`) attend
+l'accord explicite du propriétaire (variable de dépôt `PUBLISH_DEV_BUILDS`).

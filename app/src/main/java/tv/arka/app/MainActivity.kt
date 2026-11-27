@@ -70,6 +70,7 @@ import tv.arka.app.ui.Logo
 import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
+import tv.arka.app.ui.UpdatePrompt
 import tv.arka.app.ui.focusHighlight
 import tv.arka.app.ui.isTelevision
 
@@ -131,6 +132,8 @@ private fun App() {
             stack.removeAt(stack.lastIndex)
         }
     }
+
+    UpdatePrompt()
 
     // First launch: the set-up stays on screen until its last step is confirmed.
     var onboarding by remember { mutableStateOf(Repo.sources.isEmpty()) }
