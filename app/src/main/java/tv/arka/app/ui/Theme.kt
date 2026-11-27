@@ -39,7 +39,7 @@ object ArkaColors {
     val TextPrimary = Color(0xFFF5F5F7)
     val TextSecondary = Color(0xFFA1A1AA)
     val Violet = Color(0xFF7957FF)
-    val Error = ArkaError
+    val Error = Color(0xFFFF6B6B)
     val Outline = Color(0xFF34343F)
     val Scrim = Color(0xFF000000)
 }
