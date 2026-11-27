@@ -205,3 +205,31 @@ Compilé en CI, non testé sur appareil. La pause du direct est désactivée par
 | Téléchargements (lecteur › Réglages, Mon espace › Téléchargements) | fait, à valider |
 | Pause du direct sur disque | fait, expérimental |
 | Retour arrière dans le direct, enregistrement programmé, multiview, Cast, ArkaTV Connect | à faire |
+
+## État au 27/11/2026, build 1034
+
+Tout ce qui suit est compilé et vérifié par la CI (tests unitaires, lint, compilation). Le propriétaire a
+confirmé sur sa TV la mise à jour intégrée, la saisie de la clé TMDB depuis un téléphone et le
+rapprochement TMDB. Le reste n'a pas encore de retour d'appareil.
+
+| Fonction | État |
+|---|---|
+| Replay, « Depuis le début » | fait, à valider |
+| Téléchargements | fait, à valider |
+| Pause du direct sur disque | fait, expérimental, désactivé par défaut |
+| Enregistrement d'une chaîne | fait, à valider |
+| Multi-écran | fait, à valider |
+| Bandes-annonces (ouverture dans YouTube) | fait, à valider |
+| ArkaTV Connect (télécommande web locale, saisie d'une source depuis un téléphone) | fait, à valider |
+
+### Volontairement non faits, et pourquoi
+
+| Sujet | Raison |
+|---|---|
+| Programmation d'un enregistrement depuis le guide | Lancer un service depuis une alarme exige une autorisation d'alarme exacte et un appareil éveillé ; à concevoir avec un test sur TV en veille |
+| Retour arrière dans le direct | Le tampon de pause supprime ce qui a été lu ; il faut un index du flux pour reculer |
+| Cast | Dépendance aux services Google et envoi de l'adresse du flux (avec identifiants) à un autre appareil ; sans intérêt sur TV |
+| R8 | Une règle manquante casserait le lancement, et la mise à jour intégrée ne pourrait pas réparer : à activer avec un test sur appareil |
+| Clé de signature de production | Demande un secret dans le dépôt GitHub (action du propriétaire) et une désinstallation unique sur chaque appareil |
+| Textes en ressources FR / EN | Environ six cents chaînes à extraire et traduire : lot à part entière |
+| Mesures de performance | Impossible sans appareil instrumenté |
