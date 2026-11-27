@@ -93,6 +93,8 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import android.content.Intent
+import android.widget.Toast
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -294,6 +296,7 @@ class PlayerActivity : ComponentActivity() {
                     onPrevious = { load(index - 1) },
                     onNext = { load(index + 1) },
                     onLastChannel = { goToLastChannel() },
+                    onStartOver = { startOverLive() },
                     onRetry = { retry() },
                     onPip = { enterPip() },
                 )
@@ -334,6 +337,29 @@ class PlayerActivity : ComponentActivity() {
         triedAlternative = false
         errorText = null
         start(item.url, if (item.live) 0L else exo.currentPosition.coerceAtLeast(0))
+    }
+
+    /**
+     * Live channel: replays the programme on air from its beginning, when the provider keeps it.
+     * The replay opens over the live player, so Back returns to the channel.
+     */
+    private fun startOverLive() {
+        val item = queue.getOrNull(index) ?: return
+        val channel = Repo.channels.firstOrNull { "c:" + it.id == item.key } ?: return
+        scope.launch {
+            val now = System.currentTimeMillis() / 1000
+            val running = Repo.replayPrograms(channel)?.firstOrNull { it.start <= now && now < it.end }
+            val replay = running?.let { Repo.replayItem(channel, it) }
+            if (replay == null) {
+                Toast.makeText(this@PlayerActivity, "Ce programme n'est pas disponible en replay.", Toast.LENGTH_SHORT).show()
+            } else if (!isFinishing) {
+                PlayerSession.startOver = true
+                PlayerSession.queue = listOf(replay)
+                PlayerSession.index = 0
+                // Not a departure of the user: the live player must not shrink to a mini-player.
+                startActivity(Intent(this@PlayerActivity, PlayerActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION))
+            }
+        }
     }
 
     private fun goToLastChannel() {
@@ -680,6 +706,7 @@ private fun PlayerScreen(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onLastChannel: () -> Unit,
+    onStartOver: () -> Unit,
     onRetry: () -> Unit,
     onPip: () -> Unit,
 ) {
@@ -1133,6 +1160,9 @@ private fun PlayerScreen(
                     }
                     Spacer(Modifier.weight(1f))
                     Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                        if (item.live && item.key.startsWith("c:") && Repo.active?.type == "xtream") {
+                            PlayerPill("Depuis le début") { activity++; onStartOver() }
+                        }
                         if (item.live && hasLastChannel) PlayerPill("Chaîne précédente") { activity++; onLastChannel() }
                         if (!item.live && hasQueue) PlayerPill("Épisodes") { panel = PANEL_QUEUE }
                         if (!tv && !item.live && nextItem != null) PlayerPill("Suivant ›") { activity++; onNext() }

@@ -167,3 +167,10 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Une œuvre en plusieurs versions : la tuile ouvre la version française, « Versions » propose les autres.
 - [ ] Épisode suivant : carte une minute avant la fin, dix secondes, puis épisode suivant ; « Masquer » laisse finir.
 - [ ] Direct : appui long sur une chaîne › « Nouveau groupe… », puis ajout d'autres chaînes ; le groupe apparaît dans le guide.
+
+## Replay — à vérifier sur appareil
+
+- [ ] Direct : appui long sur une chaîne avec replay › « Replay de la chaîne » liste des programmes passés ; l'un d'eux se lit.
+- [ ] Chaîne sans replay : message clair, aucune erreur.
+- [ ] Lecteur du direct : « Depuis le début » relance le programme en cours ; Retour revient au direct.
+- [ ] Si le replay ne démarre pas en .ts, l'autre format (.m3u8) est essayé.

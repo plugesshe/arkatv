@@ -16,6 +16,8 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Direct
+- Lecteur du direct : « Depuis le début » relit le programme en cours depuis son commencement quand
+  le fournisseur le conserve ; Retour revient à la chaîne.
 - Replay (sources Xtream) : appui long sur une chaîne › « Replay de la chaîne » liste les programmes
   que le fournisseur conserve et les relit depuis le début.
 - Groupes de chaînes personnels : appui long sur une chaîne pour l'ajouter à un groupe ou en créer un ;
