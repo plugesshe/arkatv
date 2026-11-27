@@ -111,14 +111,9 @@ fun CatalogGridScreen(
     }
 
     Column(Modifier.fillMaxSize().systemBarsPadding()) {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(4.dp)) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
-            }
-            Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
+        ScreenHeader(title, onBack)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 12.dp),
+            contentPadding = PaddingValues(horizontal = ArkaTheme.margin, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             items(sortLabels) { (sort, label) ->
@@ -136,10 +131,10 @@ fun CatalogGridScreen(
         } else {
             LazyVerticalGrid(
                 state = state.grid,
-                columns = GridCells.Adaptive(108.dp),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                columns = GridCells.Adaptive(if (LocalIsTv.current) 104.dp else 100.dp),
+                contentPadding = PaddingValues(horizontal = ArkaTheme.margin, vertical = ArkaSpacing.md),
+                horizontalArrangement = Arrangement.spacedBy(if (LocalIsTv.current) 14.dp else 10.dp),
+                verticalArrangement = Arrangement.spacedBy(ArkaSpacing.lg),
             ) {
                 itemsIndexed(state.items) { index, vod ->
                     Poster(vod) { onOpen(vod) }

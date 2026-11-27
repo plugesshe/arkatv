@@ -172,7 +172,7 @@ fun SearchScreen(onOpen: (Vod) -> Unit) {
                     }
                 }
             },
-            shape = RoundedCornerShape(ArkaRadius.lg),
+            shape = RoundedCornerShape(ArkaRadius.md),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
@@ -257,7 +257,7 @@ private fun PagedVodRow(title: String, items: List<Vod>, onOpen: (Vod) -> Unit, 
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             itemsIndexed(items) { index, vod ->
-                Poster(vod, Modifier.width(112.dp)) { onOpen(vod) }
+                Poster(vod, Modifier.width(posterWidth)) { onOpen(vod) }
                 if (index == items.lastIndex) {
                     LaunchedEffect(items.size) { onEndReached() }
                 }

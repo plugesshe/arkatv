@@ -43,6 +43,14 @@
 - Renommer et réordonner les sources.
 - Fréquence d'actualisation automatique réglable (6 h, 12 h, 24 h, jamais).
 
+### Identité et design system (maquettes Claude Design)
+- Nouveau logo (l'arche), icône d'application et bannière Android TV.
+- Polices Archivo et JetBrains Mono, palette, rayons et échelle typographique du design system.
+- 55 icônes ArkaTV ; boutons, puces et cartes redessinés.
+- Accueil refait : hero en fondu, titres condensés, cartes avec titre et note sous l'affiche.
+- Barre de navigation mobile redessinée ; barre latérale rétractable sur Android TV avec Films, Séries
+  et Ma liste en accès direct.
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.

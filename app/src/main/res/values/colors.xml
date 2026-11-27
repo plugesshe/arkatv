@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="arka_bg_oled">#FF08080B</color>
+    <color name="arka_bg_secondary">#FF101014</color>
+    <color name="arka_surface_base">#FF18181F</color>
+    <color name="arka_surface_raised">#FF22222B</color>
+    <color name="arka_surface_raised2">#FF2E2E38</color>
+    <color name="arka_surface_border">#FF3A3A45</color>
+    <color name="arka_red_signature">#FFE50935</color>
+    <color name="arka_red_bright">#FFFF3457</color>
+    <color name="arka_red_pressed">#FFB8062A</color>
+    <color name="arka_text_primary">#FFF5F5F7</color>
+    <color name="arka_text_secondary">#FFA1A1AA</color>
+    <color name="arka_text_tertiary">#FFD4D4D8</color>
+    <color name="arka_text_disabled">#FF6B6B75</color>
+    <color name="arka_text_icon_disabled">#FF4A4A55</color>
+    <color name="arka_accent_violet">#FF7957FF</color>
+    <color name="arka_accent_violet_text">#FFC9B8FF</color>
+    <color name="arka_status_ok">#FF3DD68C</color>
+    <color name="arka_status_warning">#FFF2B53A</color>
+    <color name="arka_focus_outline">#FFF5F5F7</color>
+</resources>

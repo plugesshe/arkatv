@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="arka_space_1">4dp</dimen>
+    <dimen name="arka_space_2">8dp</dimen>
+    <dimen name="arka_space_3">12dp</dimen>
+    <dimen name="arka_space_4">16dp</dimen>
+    <dimen name="arka_space_6">24dp</dimen>
+    <dimen name="arka_space_8">32dp</dimen>
+    <dimen name="arka_space_12">48dp</dimen>
+    <dimen name="arka_space_20">80dp</dimen>
+    <dimen name="arka_radius_xs">4dp</dimen>
+    <dimen name="arka_radius_sm">8dp</dimen>
+    <dimen name="arka_radius_md">12dp</dimen>
+    <dimen name="arka_radius_lg">20dp</dimen>
+    <dimen name="arka_radius_pill">999dp</dimen>
+    <dimen name="arka_touch_min">48dp</dimen>
+    <dimen name="arka_bottom_bar">64dp</dimen>
+    <dimen name="arka_tv_row_gap">48dp</dimen>
+    <dimen name="arka_tv_overscan">80dp</dimen>
+    <dimen name="arka_tv_sidebar_collapsed">96dp</dimen>
+    <dimen name="arka_tv_sidebar_expanded">320dp</dimen>
+    <dimen name="arka_tv_control_min">64dp</dimen>
+</resources>

@@ -106,6 +106,7 @@ import tv.arka.app.ui.ArkaRed
 import tv.arka.app.ui.ArkaSurface
 import tv.arka.app.ui.ArkaTheme
 import tv.arka.app.ui.formatClock
+import tv.arka.app.ui.isTelevision
 import tv.arka.app.ui.formatDuration
 import tv.arka.app.ui.rememberNow
 import java.util.Locale
@@ -185,8 +186,9 @@ class PlayerActivity : ComponentActivity() {
 
         load(PlayerSession.index.coerceIn(0, queue.lastIndex))
 
+        val television = isTelevision()
         setContent {
-            ArkaTheme {
+            ArkaTheme(isTv = television) {
                 PlayerScreen(
                     player = exo,
                     item = queue[index],

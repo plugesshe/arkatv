@@ -4,19 +4,26 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LiveTv
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -24,12 +31,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Store
@@ -37,10 +51,11 @@ import tv.arka.app.data.Vod
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.VodSort
 import tv.arka.app.ui.AddSourceScreen
-import tv.arka.app.ui.ArkaBg
-import tv.arka.app.ui.ArkaMuted
-import tv.arka.app.ui.ArkaRed
-import tv.arka.app.ui.ArkaSurface
+import tv.arka.app.ui.ArkaColors
+import tv.arka.app.ui.ArkaIcon
+import tv.arka.app.ui.ArkaMotion
+import tv.arka.app.ui.ArkaRadius
+import tv.arka.app.ui.ArkaSize
 import tv.arka.app.ui.ArkaTheme
 import tv.arka.app.ui.CatalogGridScreen
 import tv.arka.app.ui.CatalogGridState
@@ -49,23 +64,43 @@ import tv.arka.app.ui.GridScreen
 import tv.arka.app.ui.GuideScreen
 import tv.arka.app.ui.HomeScreen
 import tv.arka.app.ui.LiveScreen
+import tv.arka.app.ui.LocalIsTv
+import tv.arka.app.ui.Logo
 import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.SearchScreen
+import tv.arka.app.ui.focusHighlight
+import tv.arka.app.ui.isTelevision
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
         Repo.init(applicationContext)
+        val television = isTelevision()
         setContent {
-            ArkaTheme {
-                Surface(Modifier.fillMaxSize(), color = ArkaBg) {
+            ArkaTheme(isTv = television) {
+                Surface(Modifier.fillMaxSize(), color = ArkaColors.Background) {
                     App()
                 }
             }
         }
     }
 }
+
+/** Main destinations. Handsets show five of them in the bottom bar; TV lists them in the side bar. */
+private enum class Destination(val label: String, @DrawableRes val icon: Int) {
+    SEARCH("Recherche", R.drawable.ic_arka_recherche),
+    HOME("Accueil", R.drawable.ic_arka_accueil),
+    MOVIES("Films", R.drawable.ic_arka_films),
+    SERIES("Séries", R.drawable.ic_arka_series),
+    LIVE("Direct", R.drawable.ic_arka_direct),
+    GUIDE("Guide TV", R.drawable.ic_arka_guide_tv),
+    MY_LIST("Ma liste", R.drawable.ic_arka_ma_liste),
+    PROFILE("Mon espace", R.drawable.ic_arka_mon_espace),
+}
+
+private val mobileDestinations =
+    listOf(Destination.HOME, Destination.LIVE, Destination.GUIDE, Destination.SEARCH, Destination.PROFILE)
 
 private sealed interface Screen {
     data object Main : Screen
@@ -86,7 +121,7 @@ private sealed interface Screen {
 @Composable
 private fun App() {
     val stack = remember { mutableStateListOf<Screen>(Screen.Main) }
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var destination by rememberSaveable { mutableStateOf(Destination.HOME) }
     // Keeps each screen's saved state (scroll positions, selected filters) while another one is on top.
     val holder = rememberSaveableStateHolder()
     val pop: () -> Unit = {
@@ -102,20 +137,21 @@ private fun App() {
     }
 
     BackHandler(enabled = stack.size > 1) { pop() }
-    BackHandler(enabled = stack.size == 1 && tab != 0) { tab = 0 }
+    BackHandler(enabled = stack.size == 1 && destination != Destination.HOME) { destination = Destination.HOME }
 
     val openVod: (Vod) -> Unit = { stack.add(Screen.Detail(it)) }
+    val openCatalog: (String, VodKind, String?, VodSort) -> Unit = { title, kind, categoryId, sort ->
+        stack.add(Screen.Catalog(title, kind, categoryId, CatalogGridState(sort)))
+    }
 
     val index = stack.lastIndex
     holder.SaveableStateProvider("screen-$index") {
         when (val screen = stack[index]) {
-            Screen.Main -> MainTabs(
-                tab = tab,
-                onTab = { tab = it },
+            Screen.Main -> MainShell(
+                destination = destination,
+                onDestination = { destination = it },
                 onOpen = openVod,
-                onCatalog = { title, kind, categoryId, sort ->
-                    stack.add(Screen.Catalog(title, kind, categoryId, CatalogGridState(sort)))
-                },
+                onCatalog = openCatalog,
                 onList = { title, items -> stack.add(Screen.StaticGrid(title, items)) },
                 onAddSource = { stack.add(Screen.AddSource) },
             )
@@ -135,50 +171,157 @@ private fun App() {
 }
 
 @Composable
-private fun MainTabs(
-    tab: Int,
-    onTab: (Int) -> Unit,
+private fun MainShell(
+    destination: Destination,
+    onDestination: (Destination) -> Unit,
     onOpen: (Vod) -> Unit,
     onCatalog: (String, VodKind, String?, VodSort) -> Unit,
     onList: (String, List<Vod>) -> Unit,
     onAddSource: () -> Unit,
 ) {
-    val tabs = listOf(
-        "Accueil" to Icons.Filled.Home,
-        "Direct" to Icons.Filled.LiveTv,
-        "Guide" to Icons.Filled.CalendarMonth,
-        "Recherche" to Icons.Filled.Search,
-        "Mon espace" to Icons.Filled.Person,
-    )
-    Scaffold(
-        containerColor = ArkaBg,
-        bottomBar = {
-            NavigationBar(containerColor = ArkaSurface) {
-                tabs.forEachIndexed { index, (label, icon) ->
-                    NavigationBarItem(
-                        selected = tab == index,
-                        onClick = { onTab(index) },
-                        icon = { Icon(icon, contentDescription = label) },
-                        label = { Text(label, fontSize = 10.sp, maxLines = 1) },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = ArkaRed,
-                            selectedTextColor = ArkaRed,
-                            unselectedIconColor = ArkaMuted,
-                            unselectedTextColor = ArkaMuted,
-                            indicatorColor = Color.Transparent,
-                        ),
+    // The film and series grids opened from the TV side bar keep their state while the user moves around.
+    val movies = remember { CatalogGridState() }
+    val series = remember { CatalogGridState() }
+    val goHome = { onDestination(Destination.HOME) }
+
+    val content: @Composable () -> Unit = {
+        when (destination) {
+            Destination.HOME -> HomeScreen(onOpen = onOpen, onCatalog = onCatalog)
+            Destination.LIVE -> LiveScreen()
+            Destination.GUIDE -> GuideScreen()
+            Destination.SEARCH -> SearchScreen(onOpen = onOpen)
+            Destination.PROFILE -> ProfileScreen(onAddSource = onAddSource, onOpen = onOpen, onList = onList)
+            Destination.MOVIES -> CatalogGridScreen("Films", VodKind.MOVIE, null, movies, onBack = goHome, onOpen = onOpen)
+            Destination.SERIES -> CatalogGridScreen("Séries", VodKind.SERIES, null, series, onBack = goHome, onOpen = onOpen)
+            Destination.MY_LIST -> GridScreen("Ma liste", Repo.myList, onBack = goHome, onOpen = onOpen)
+        }
+    }
+
+    if (LocalIsTv.current) {
+        TvShell(destination, onDestination, content)
+    } else {
+        Scaffold(
+            containerColor = ArkaColors.Background,
+            bottomBar = { BottomBar(destination, onDestination) },
+        ) { padding ->
+            // The home hero runs under the status bar; other screens start below it.
+            val top = if (destination == Destination.HOME) 0.dp else padding.calculateTopPadding()
+            Box(Modifier.fillMaxSize().padding(top = top, bottom = padding.calculateBottomPadding())) {
+                content()
+            }
+        }
+    }
+}
+
+/** Handset navigation: 64 dp bar, five destinations, the active one marked by a pill and a bold label. */
+@Composable
+private fun BottomBar(current: Destination, onSelect: (Destination) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().background(ArkaColors.BackgroundAlt).navigationBarsPadding().height(ArkaSize.bottomBar),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        mobileDestinations.forEach { item ->
+            val selected = item == current
+            Column(
+                Modifier.weight(1f).fillMaxHeight().clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { onSelect(item) },
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Box(
+                    Modifier.size(width = 56.dp, height = 30.dp)
+                        .clip(RoundedCornerShape(ArkaRadius.pill))
+                        .background(if (selected) ArkaColors.SurfaceHigh else Color.Transparent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    ArkaIcon(
+                        item.icon,
+                        contentDescription = null,
+                        tint = if (selected) ArkaColors.RedBright else ArkaColors.TextSecondary,
+                        size = 22.dp,
                     )
                 }
+                Text(
+                    item.label,
+                    color = if (selected) ArkaColors.TextPrimary else ArkaColors.TextSecondary,
+                    fontSize = 11.sp,
+                    fontWeight = if (selected) FontWeight(700) else FontWeight(500),
+                    maxLines = 1,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
             }
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (tab) {
-                0 -> HomeScreen(onOpen = onOpen, onCatalog = onCatalog)
-                1 -> LiveScreen()
-                2 -> GuideScreen()
-                3 -> SearchScreen(onOpen = onOpen)
-                else -> ProfileScreen(onAddSource = onAddSource, onOpen = onOpen, onList = onList)
+        }
+    }
+}
+
+/**
+ * TV navigation: a side bar that takes little room when idle and opens when the focus reaches it.
+ * The content is dimmed while the bar is open and never moves.
+ */
+@Composable
+private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, content: @Composable () -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    val width by animateDpAsState(
+        targetValue = if (expanded) ArkaSize.tvSidebarExpanded else ArkaSize.tvSidebarCollapsed,
+        animationSpec = tween(ArkaMotion.FOCUS_MS, easing = ArkaMotion.easing),
+        label = "sidebar",
+    )
+    val items = Destination.entries.filter { item ->
+        when (item) {
+            Destination.MOVIES -> Repo.movieCount > 0
+            Destination.SERIES -> Repo.seriesCount > 0
+            else -> true
+        }
+    }
+
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().padding(start = ArkaSize.tvSidebarCollapsed)) {
+            content()
+        }
+        if (expanded) {
+            Box(Modifier.fillMaxSize().background(ArkaColors.Scrim.copy(alpha = 0.4f)))
+        }
+        Column(
+            Modifier.fillMaxHeight().width(width)
+                .background(if (expanded) ArkaColors.BackgroundAlt else ArkaColors.Background)
+                .onFocusChanged { expanded = it.hasFocus }
+                .padding(vertical = 20.dp, horizontal = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Box(Modifier.height(32.dp).padding(start = 6.dp), contentAlignment = Alignment.CenterStart) {
+                Logo(wordmark = expanded, height = 20.dp)
+            }
+            Spacer(Modifier.height(8.dp))
+            items.forEach { item ->
+                val selected = item == current
+                Row(
+                    Modifier.fillMaxWidth().height(ArkaSize.tvControlMin)
+                        .focusHighlight(ArkaRadius.sm, 1f)
+                        .clip(RoundedCornerShape(ArkaRadius.sm))
+                        .background(if (selected) ArkaColors.SurfaceHigh else Color.Transparent)
+                        .clickable { onSelect(item) }
+                        .padding(horizontal = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    ArkaIcon(
+                        item.icon,
+                        contentDescription = item.label,
+                        tint = if (selected) ArkaColors.RedBright else ArkaColors.TextSecondary,
+                        size = 18.dp,
+                    )
+                    if (expanded) {
+                        Text(
+                            item.label,
+                            color = if (selected) ArkaColors.TextPrimary else ArkaColors.TextSecondary,
+                            style = ArkaTheme.type.label,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(start = 12.dp),
+                        )
+                    }
+                }
             }
         }
     }

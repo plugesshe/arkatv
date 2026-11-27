@@ -1,7 +1,16 @@
 package tv.arka.app.ui
 
+import android.app.UiModeManager
 import android.content.Context
+import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.content.Intent
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
+import tv.arka.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -83,6 +92,13 @@ fun rememberNow(): Long {
     return now
 }
 
+/** True on Android TV and other leanback devices driven by a remote control. */
+fun Context.isTelevision(): Boolean {
+    val uiMode = (getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType
+    return uiMode == Configuration.UI_MODE_TYPE_TELEVISION ||
+        packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+}
+
 fun Channel.toPlayItem(): PlayItem =
     PlayItem(key = "c:$id", title = name, subtitle = "", url = url, live = true, poster = logo, epgId = epgId)
 
@@ -102,81 +118,129 @@ fun playChannel(context: Context, list: List<Channel>, channel: Channel) {
     play(context, queue, index)
 }
 
+/** The arch mark, optionally followed by the wordmark (Archivo 800 at 112 % width, "TV" lighter). */
 @Composable
-fun Logo(modifier: Modifier = Modifier) {
+fun Logo(modifier: Modifier = Modifier, wordmark: Boolean = true, height: Dp = 28.dp) {
     Row(modifier, verticalAlignment = Alignment.CenterVertically) {
-        Text("ARKA", color = ArkaRed, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, fontSize = 22.sp)
-        Text("TV", color = Color.White, fontWeight = FontWeight.Black, fontStyle = FontStyle.Italic, fontSize = 22.sp)
+        Image(painterResource(R.drawable.arka_mark), contentDescription = "ArkaTV", modifier = Modifier.size(height))
+        if (wordmark) {
+            Spacer(Modifier.width(8.dp))
+            Text("ARKA", color = ArkaColors.TextPrimary, fontFamily = ArkaLogoFont, fontWeight = FontWeight(800), fontSize = 20.sp)
+            Text("TV", color = ArkaColors.TextSecondary, fontFamily = ArkaLogoFont, fontWeight = FontWeight(500), fontSize = 20.sp)
+        }
     }
 }
 
 @Composable
 fun SectionTitle(text: String, onMore: (() -> Unit)? = null) {
+    val margin = ArkaTheme.margin
     Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp),
+        Modifier.fillMaxWidth().padding(start = margin, end = margin, top = ArkaTheme.rowGap, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
             text,
-            fontWeight = FontWeight.Bold,
-            fontSize = 17.sp,
+            style = ArkaTheme.type.heading,
+            fontWeight = FontWeight(700),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         if (onMore != null) {
             Text(
-                "Tout voir",
-                color = ArkaMuted,
-                fontSize = 13.sp,
-                modifier = Modifier.clip(RoundedCornerShape(6.dp)).clickable(onClick = onMore).padding(6.dp),
+                "Tout",
+                color = ArkaColors.TextSecondary,
+                style = ArkaTheme.type.label,
+                modifier = Modifier.focusHighlight(ArkaRadius.sm, ArkaMotion.FOCUS_SCALE_BUTTON)
+                    .clip(RoundedCornerShape(ArkaRadius.sm)).clickable(onClick = onMore).padding(8.dp),
             )
         }
     }
 }
 
+/** "2024 · ★ 7,8" — only the parts the source actually provides. */
+fun vodMeta(vod: Vod): String {
+    val rating = vod.rating.replace(',', '.').toFloatOrNull()?.takeIf { it > 0f }
+    return listOfNotNull(
+        vod.year.takeIf { it.isNotBlank() },
+        rating?.let { "★ " + String.format(Locale.FRANCE, "%.1f", it) },
+    ).joinToString(" · ")
+}
+
+/**
+ * Poster card: 2:3 image, title and metadata underneath so the artwork stays clean.
+ * Without an image, the title is set typographically on the surface colour.
+ */
 @Composable
 fun Poster(vod: Vod, modifier: Modifier = Modifier, onClick: () -> Unit) {
-    Box(
-        modifier
-            .aspectRatio(2f / 3f)
-            .focusHighlight()
-            .clip(RoundedCornerShape(ArkaRadius.md))
-            .background(ArkaCard)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
+    Column(modifier) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .focusHighlight()
+                .clip(RoundedCornerShape(ArkaRadius.sm))
+                .background(ArkaColors.Surface)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.BottomStart,
+        ) {
+            Text(
+                vod.name.uppercase(),
+                color = ArkaColors.TextSecondary,
+                fontFamily = ArkaDisplayFont,
+                fontWeight = FontWeight(800),
+                fontSize = 18.sp,
+                lineHeight = 18.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(8.dp),
+            )
+            if (vod.poster.isNotBlank()) {
+                AsyncImage(
+                    model = vod.poster,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         Text(
             vod.name,
-            color = ArkaMuted,
-            fontSize = 12.sp,
-            textAlign = TextAlign.Center,
-            maxLines = 4,
+            style = ArkaTheme.type.label,
+            maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(6.dp),
+            modifier = Modifier.padding(top = 8.dp),
         )
-        if (vod.poster.isNotBlank()) {
-            AsyncImage(
-                model = vod.poster,
-                contentDescription = vod.name,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+        val meta = vodMeta(vod)
+        if (meta.isNotBlank()) {
+            Text(
+                meta,
+                color = ArkaColors.TextSecondary,
+                fontSize = if (LocalIsTv.current) 11.sp else 12.sp,
+                maxLines = 1,
+                modifier = Modifier.padding(top = 2.dp),
             )
         }
     }
 }
+
+/** Width of a poster in a horizontal row. */
+val posterWidth: Dp
+    @Composable get() = if (LocalIsTv.current) 104.dp else 112.dp
 
 @Composable
 fun VodRow(title: String, items: List<Vod>, onOpen: (Vod) -> Unit, onMore: (() -> Unit)? = null) {
+    val width = posterWidth
     Column {
         SectionTitle(title, onMore)
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            // Vertical padding leaves room for the focus outline and enlargement.
+            contentPadding = PaddingValues(horizontal = ArkaTheme.margin, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (LocalIsTv.current) 14.dp else 10.dp),
         ) {
             items(items) { vod ->
-                Poster(vod, Modifier.width(112.dp)) { onOpen(vod) }
+                Poster(vod, Modifier.width(width)) { onOpen(vod) }
             }
         }
     }
@@ -185,7 +249,7 @@ fun VodRow(title: String, items: List<Vod>, onOpen: (Vod) -> Unit, onMore: (() -
 @Composable
 fun ChannelLogo(url: String, name: String, modifier: Modifier = Modifier) {
     Box(
-        modifier.clip(RoundedCornerShape(6.dp)).background(ArkaCard),
+        modifier.clip(RoundedCornerShape(ArkaRadius.sm)).background(ArkaColors.Surface),
         contentAlignment = Alignment.Center,
     ) {
         if (url.isNotBlank()) {
@@ -196,7 +260,7 @@ fun ChannelLogo(url: String, name: String, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxSize().padding(4.dp),
             )
         } else {
-            Text(name.take(3).uppercase(), color = ArkaMuted, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(name.take(3).uppercase(), color = ArkaColors.TextSecondary, style = ArkaTheme.type.label)
         }
     }
 }

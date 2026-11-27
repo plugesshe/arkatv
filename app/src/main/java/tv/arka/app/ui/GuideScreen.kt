@@ -195,7 +195,7 @@ fun GuideScreen() {
 private fun ProgramCell(title: String, time: String, width: Dp, current: Boolean, onClick: () -> Unit) {
     Box(
         Modifier.width(width).fillMaxHeight().padding(2.dp)
-            .focusHighlight(RoundedCornerShape(ArkaRadius.sm), scale = 1f)
+            .focusHighlight(ArkaRadius.sm, scale = 1f)
             .clip(RoundedCornerShape(ArkaRadius.sm))
             .background(if (current) ArkaRedDark else ArkaCard)
             .clickable(onClick = onClick)

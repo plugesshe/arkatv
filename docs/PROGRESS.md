@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 7).
+- Version : `0.2.0-dev` (versionCode 8).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -47,14 +47,36 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 5. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
 6. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
 
-## Ce qui attend les maquettes ou un appareil
+## Refonte d'après les maquettes Claude Design
 
-- Interface Android TV dédiée, refonte des écrans, assistant d'ajout de source, logo définitif.
-- Textes en ressources français/anglais (à faire pendant la refonte, les libellés vont changer).
-- Groupes de chaînes personnalisés et réorganisation libre de toutes les chaînes : demandent un écran
-  d'édition à concevoir.
-- Actualisation en arrière-plan quand l'application est fermée (WorkManager) : volontairement non faite,
-  l'actualisation n'a lieu qu'à l'ouverture.
+Les maquettes sont dans l'archive fournie par l'utilisateur (non versionnée) ; les tokens et le README du
+handoff sont copiés dans `docs/design/`. Rendu des planches fait hors appareil (Chrome sans interface)
+pour lecture ; aucune comparaison visuelle avec l'application n'a pu être faite.
+
+| Planche | État dans le code |
+| --- | --- |
+| Design System (tokens, polices, logo, icônes, boutons, puces, cartes) | intégré |
+| Écrans 2 — Accueil | refait (mobile et TV) : hero, rangées, cartes |
+| Écrans 2 — Catalogue | en-tête, grille et puces au nouveau style ; panneau de catégories TV et feuille de tri à faire |
+| Navigation | barre inférieure mobile et barre latérale TV refaites |
+| Écrans 1 — Démarrage et sources | à faire |
+| Écrans 2 — Fiches film et série, Découverte | à faire |
+| Écrans 3 — Direct et guide | à faire |
+| Écrans 4 — Lecteur | à faire |
+| Écrans 5 — Recherche et Mon espace | à faire |
+| Écrans 6 — Appareils (Cast, Connect) | fonctionnalités inexistantes |
+| Écrans 7 et 8 — États, variantes, compléments | à faire |
+| Prototypes TV et lecteur mobile (gestes) | à faire |
+
+Ordre prévu : fiches film et série, puis direct et guide, lecteur, recherche et Mon espace, démarrage et
+sources. Les écrans de fonctionnalités inexistantes (téléchargements, enregistrements, profils, Cast,
+Connect, multiview, contrôle parental) ne seront dessinés qu'avec la fonctionnalité.
+
+## Ce qui attend encore un appareil ou une décision
+
+- Textes en ressources français/anglais (à faire écran par écran pendant la refonte).
+- Groupes de chaînes personnalisés et réorganisation libre de toutes les chaînes.
+- Actualisation en arrière-plan quand l'application est fermée (WorkManager) : volontairement non faite.
 - Mesures de performance et toute la validation manuelle.
 
 ## Décisions prises
