@@ -2,6 +2,7 @@ package tv.arka.app.data
 
 import android.content.Context
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -44,6 +45,9 @@ object Repo {
     var syncError by mutableStateOf<String?>(null)
     var lastSync by mutableLongStateOf(0L)
     var epgLoading by mutableStateOf(false)
+
+    /** Changes whenever the stored catalogue changes, so screens that query it can refresh. */
+    var catalogVersion by mutableIntStateOf(0)
 
     var liveCategories by mutableStateOf(listOf<Category>())
     var channels by mutableStateOf(listOf<Channel>())
@@ -163,6 +167,7 @@ object Repo {
                     val cached = withContext(Dispatchers.IO) { catalogStore.load(source, format) }
                     if (cached != null) {
                         apply(cached)
+                        catalogVersion++
                         epg = withContext(Dispatchers.IO) { catalogStore.loadEpg(source.id, now / 1000 - 2 * 3600) }
                     }
                 } catch (e: CancellationException) {
@@ -189,6 +194,7 @@ object Repo {
                     Store.setLastSync(source.id, now)
                     if (fetched.epgUrl.isNotBlank()) Store.setDiscoveredEpgUrl(source.id, fetched.epgUrl)
                     withContext(Dispatchers.IO) { catalogStore?.save(source, fetched.catalog) }
+                    if (mine == generation) catalogVersion++
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -295,6 +301,45 @@ object Repo {
         if (source.type != "xtream") return
         val api = XtreamApi(source)
         channels = channels.map { it.copy(url = api.liveUrl(it.id, format)) }
+    }
+
+    const val SEARCH_PAGE = 40
+
+    /** [normalized] comes from [TextNormalizer.normalize]. Results are ranked and paginated. */
+    suspend fun searchChannels(normalized: String, offset: Int): List<Channel> {
+        val source = active ?: return emptyList()
+        val catalogStore = store
+        val format = Store.liveFormat
+        val memory = channels
+        return withContext(Dispatchers.IO) {
+            try {
+                checkNotNull(catalogStore).searchChannels(source, format, normalized, SEARCH_PAGE, offset)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Stored catalogue unavailable: fall back to the catalogue held in memory.
+                val terms = TextNormalizer.terms(normalized)
+                memory.asSequence().filter { TextNormalizer.matches(it.name, terms) }
+                    .drop(offset).take(SEARCH_PAGE).toList()
+            }
+        }
+    }
+
+    suspend fun searchVods(kind: VodKind, normalized: String, offset: Int): List<Vod> {
+        val source = active ?: return emptyList()
+        val catalogStore = store
+        val memory = if (kind == VodKind.MOVIE) movies else series
+        return withContext(Dispatchers.IO) {
+            try {
+                checkNotNull(catalogStore).searchVods(source, kind, normalized, SEARCH_PAGE, offset)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                val terms = TextNormalizer.terms(normalized)
+                memory.asSequence().filter { TextNormalizer.matches(it.name, terms) }
+                    .drop(offset).take(SEARCH_PAGE).toList()
+            }
+        }
     }
 
     fun programs(epgId: String): List<Program> =

@@ -7,8 +7,10 @@ import androidx.room.Entity
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.sqlite.db.SupportSQLiteQuery
 
 /**
  * Catalogue cache. Rows keep the provider order through [pos].
@@ -26,6 +28,8 @@ data class ChannelRow(
     val categoryId: String,
     val epgId: String,
     val number: Int,
+    /** Normalised name (lower case, no accents or punctuation) used by the search. */
+    val search: String,
 )
 
 @Entity(tableName = "vods", primaryKeys = ["sourceId", "kind", "pos"])
@@ -43,6 +47,8 @@ data class VodRow(
     val addedAt: Long,
     val plot: String,
     val year: String,
+    /** Normalised name (lower case, no accents or punctuation) used by the search. */
+    val search: String,
 )
 
 @Entity(tableName = "categories", primaryKeys = ["sourceId", "kind", "pos"])
@@ -78,6 +84,12 @@ interface CatalogDao {
     @Query("SELECT * FROM programs WHERE sourceId = :sourceId AND endAt > :from ORDER BY channel, startAt")
     suspend fun programs(sourceId: String, from: Long): List<ProgramRow>
 
+    @RawQuery
+    suspend fun searchChannels(query: SupportSQLiteQuery): List<ChannelRow>
+
+    @RawQuery
+    suspend fun searchVods(query: SupportSQLiteQuery): List<VodRow>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChannels(rows: List<ChannelRow>)
 
@@ -105,7 +117,7 @@ interface CatalogDao {
 
 @Database(
     entities = [ChannelRow::class, VodRow::class, CategoryRow::class, ProgramRow::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class ArkaDatabase : RoomDatabase() {

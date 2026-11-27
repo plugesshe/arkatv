@@ -12,7 +12,9 @@ est dans `PROGRESS.md`.
 - ✅ Tests unitaires (parseurs, chiffrement, migration, progression), lint et tests en CI
 - 🟡 Navigation Android TV : focus visible sur les cartes et les lignes ; pas encore d'interface TV dédiée
 - ⬜ Chaînes d'interface en ressources (français, anglais)
-- ⬜ Pagination du catalogue (Paging) et index de recherche en base
+- ✅ Signature stable des builds de debug
+- ✅ Recherche sur le catalogue stocké : insensible aux accents, classée par pertinence, paginée, historique local
+- ⬜ Pagination des listes et grilles (Paging)
 
 ## P1 — Refonte premium
 

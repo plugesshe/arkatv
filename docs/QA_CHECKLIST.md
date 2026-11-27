@@ -4,7 +4,8 @@
 
 - `testDebugUnitTest` : parseur M3U, parseur XMLTV (fuseaux, gzip, fichier tronqué), parseur Xtream
   (types hétérogènes, saisons en objet ou en tableaux), chiffrement, migration des données 0.1.0,
-  règles de progression.
+  règles de progression, cache Room (aller-retour, absence d'identifiants en base, remplacement par
+  source), recherche (accents, classement, pagination), normalisation du texte.
 - `lintDebug` : bloquant sur les erreurs.
 - `assembleDebug`.
 
@@ -29,6 +30,11 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Ajout Xtream avec de mauvais identifiants : message clair, rien n'est enregistré.
 - [ ] Ajout M3U ; suppression d'une source ; bascule entre deux sources.
 - [ ] Changement de format MPEG-TS / HLS : effet immédiat, sans rechargement.
+
+### Recherche
+- [ ] « heritiers » trouve « Les Héritiers du Vent » ; deux mots dans le désordre fonctionnent.
+- [ ] Une recherche large charge la suite en faisant défiler les affiches ; « Afficher plus de chaînes ».
+- [ ] Ouvrir un résultat ajoute la recherche à l'historique ; « Effacer l'historique » le vide.
 
 ### Lecture
 - [ ] Film, épisode (enchaînement), chaîne en direct, zapping, pistes audio et sous-titres, mini-lecteur.

@@ -13,6 +13,11 @@
   arrière-plan, dernier catalogue valide conservé en cas de panne.
 - Changement de format du direct (MPEG-TS / HLS) sans rechargement.
 
+### Recherche
+- Recherche insensible aux accents, à la casse et à la ponctuation, sur plusieurs mots.
+- Résultats classés par pertinence et chargés par pages, sans plafond.
+- Historique local des recherches, effaçable.
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.
@@ -21,6 +26,7 @@
 ### Qualité
 - Tests unitaires et lint exécutés en CI.
 - La pré-release « latest » n'est plus publiée que depuis la branche 0.1 validée.
+- Builds de debug signés avec une clé fixe : une version s'installe par-dessus la précédente.
 
 ## 0.1.0 — 2026-11-27
 

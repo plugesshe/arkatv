@@ -26,5 +26,6 @@ version d'Android et la taille de la source.
   de lecture et la mémoire resteront élevés. La correction est la pagination en base (P0 restant).
 - Les URLs des playlists M3U sont déchiffrées une à une au chargement du cache.
 - L'accueil regroupe et trie les listes en mémoire à chaque changement de catalogue.
-- La recherche parcourt les listes en mémoire, sans index.
+- La recherche interroge la base par `LIKE` sur une colonne normalisée : chaque requête parcourt la
+  table de la source. Temps non mesuré sur gros volume.
 - Volumes cibles (20 000 chaînes, 100 000 films, 30 000 séries) : aucun test de charge exécuté.

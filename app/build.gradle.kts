@@ -15,8 +15,18 @@ android {
         applicationId = "tv.arka.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 2
+        versionCode = 3
         versionName = "0.2.0-dev"
+    }
+    signingConfigs {
+        // Fixed debug key kept in the repository so that every CI build can be installed over the
+        // previous one. It is NOT a production key and must never sign a public release.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

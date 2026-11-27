@@ -89,6 +89,22 @@ object Store {
             .put("user", s.user).put("pass", s.pass).put("epg", s.epgUrl)
     }
 
+    fun loadSearchHistory(): List<String> {
+        val raw = readBlob("search_history") ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveSearchHistory(list: List<String>) {
+        val array = JSONArray()
+        list.forEach { array.put(it) }
+        writeBlob("search_history", array.toString())
+    }
+
     fun loadFavorites(sourceId: String): Set<String> {
         val raw = readBlob("fav_$sourceId") ?: return emptySet()
         return try {

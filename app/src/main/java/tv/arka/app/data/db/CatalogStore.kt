@@ -1,11 +1,13 @@
 package tv.arka.app.data.db
 
 import androidx.room.withTransaction
+import androidx.sqlite.db.SimpleSQLiteQuery
 import tv.arka.app.data.Catalog
 import tv.arka.app.data.Category
 import tv.arka.app.data.Channel
 import tv.arka.app.data.Program
 import tv.arka.app.data.Source
+import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.XtreamApi
@@ -28,6 +30,7 @@ class CatalogStore(private val database: ArkaDatabase) {
                 categoryId = c.categoryId,
                 epgId = c.epgId,
                 number = c.number,
+                search = TextNormalizer.normalize(c.name),
             )
         }
         val vods = vodRows(source, MOVIE, catalog.movies, xtream) + vodRows(source, SERIES, catalog.series, xtream)
@@ -61,6 +64,7 @@ class CatalogStore(private val database: ArkaDatabase) {
                 addedAt = v.added,
                 plot = v.plot,
                 year = v.year,
+                search = TextNormalizer.normalize(v.name),
             )
         }
 
@@ -76,39 +80,8 @@ class CatalogStore(private val database: ArkaDatabase) {
         val categories = dao.categories(source.id).groupBy { it.kind }
         val api = if (source.type == "xtream") XtreamApi(source) else null
 
-        val channels = channelRows.map { row ->
-            val url = api?.liveUrl(row.streamId, liveFormat) ?: SecretBox.decrypt(row.secret).orEmpty()
-            Channel(
-                id = if (api != null) row.streamId else url,
-                name = row.name,
-                logo = row.logo,
-                categoryId = row.categoryId,
-                epgId = row.epgId,
-                url = url,
-                number = row.number,
-            )
-        }
-        fun vods(rows: List<VodRow>, kind: VodKind): List<Vod> = rows.map { row ->
-            val url = if (api == null) {
-                SecretBox.decrypt(row.secret).orEmpty()
-            } else if (kind == VodKind.MOVIE) {
-                api.movieUrl(row.streamId, row.ext.ifBlank { "mp4" })
-            } else {
-                ""
-            }
-            Vod(
-                id = if (api != null) row.streamId else url,
-                kind = kind,
-                name = row.name,
-                poster = row.poster,
-                categoryId = row.categoryId,
-                url = url,
-                rating = row.rating,
-                added = row.addedAt,
-                plot = row.plot,
-                year = row.year,
-            )
-        }
+        val channels = channelRows.map { channelOf(it, api, liveFormat) }
+        fun vods(rows: List<VodRow>, kind: VodKind): List<Vod> = rows.map { vodOf(it, kind, api) }
         fun cats(kind: String): List<Category> =
             categories[kind].orEmpty().map { Category(it.categoryId, it.name) }
 
@@ -120,6 +93,100 @@ class CatalogStore(private val database: ArkaDatabase) {
             seriesCategories = cats(SERIES),
             series = vods(seriesRows, VodKind.SERIES),
         )
+    }
+
+    private fun channelOf(row: ChannelRow, api: XtreamApi?, liveFormat: String): Channel {
+        val url = api?.liveUrl(row.streamId, liveFormat) ?: SecretBox.decrypt(row.secret).orEmpty()
+        return Channel(
+            id = if (api != null) row.streamId else url,
+            name = row.name,
+            logo = row.logo,
+            categoryId = row.categoryId,
+            epgId = row.epgId,
+            url = url,
+            number = row.number,
+        )
+    }
+
+    private fun vodOf(row: VodRow, kind: VodKind, api: XtreamApi?): Vod {
+        val url = if (api == null) {
+            SecretBox.decrypt(row.secret).orEmpty()
+        } else if (kind == VodKind.MOVIE) {
+            api.movieUrl(row.streamId, row.ext.ifBlank { "mp4" })
+        } else {
+            ""
+        }
+        return Vod(
+            id = if (api != null) row.streamId else url,
+            kind = kind,
+            name = row.name,
+            poster = row.poster,
+            categoryId = row.categoryId,
+            url = url,
+            rating = row.rating,
+            added = row.addedAt,
+            plot = row.plot,
+            year = row.year,
+        )
+    }
+
+    private fun apiOf(source: Source): XtreamApi? = if (source.type == "xtream") XtreamApi(source) else null
+
+    /** [normalized] must come from [TextNormalizer.normalize]. Best matches first. */
+    suspend fun searchChannels(
+        source: Source,
+        liveFormat: String,
+        normalized: String,
+        limit: Int,
+        offset: Int,
+    ): List<Channel> {
+        val query = searchQuery("channels", source.id, null, normalized, limit, offset) ?: return emptyList()
+        val api = apiOf(source)
+        return dao.searchChannels(query).map { channelOf(it, api, liveFormat) }
+    }
+
+    suspend fun searchVods(source: Source, kind: VodKind, normalized: String, limit: Int, offset: Int): List<Vod> {
+        val kindName = if (kind == VodKind.MOVIE) MOVIE else SERIES
+        val query = searchQuery("vods", source.id, kindName, normalized, limit, offset) ?: return emptyList()
+        val api = apiOf(source)
+        return dao.searchVods(query).map { vodOf(it, kind, api) }
+    }
+
+    /**
+     * Every term must appear in the name. Ranking: exact name, then names starting with the query,
+     * then names containing it at the start of a word, then the rest; shorter names first.
+     */
+    private fun searchQuery(
+        table: String,
+        sourceId: String,
+        kind: String?,
+        normalized: String,
+        limit: Int,
+        offset: Int,
+    ): SimpleSQLiteQuery? {
+        val terms = TextNormalizer.terms(normalized)
+        if (terms.isEmpty()) return null
+        val sql = StringBuilder("SELECT * FROM ").append(table).append(" WHERE sourceId = ?")
+        val args = ArrayList<Any>()
+        args.add(sourceId)
+        if (kind != null) {
+            sql.append(" AND kind = ?")
+            args.add(kind)
+        }
+        for (term in terms) {
+            sql.append(" AND search LIKE ?")
+            args.add("%$term%")
+        }
+        sql.append(
+            " ORDER BY CASE WHEN search = ? THEN 0 WHEN search LIKE ? THEN 1 WHEN search LIKE ? THEN 2 ELSE 3 END," +
+                " length(search), pos LIMIT ? OFFSET ?"
+        )
+        args.add(normalized)
+        args.add("$normalized%")
+        args.add("% $normalized%")
+        args.add(limit)
+        args.add(offset)
+        return SimpleSQLiteQuery(sql.toString(), args.toTypedArray())
     }
 
     suspend fun saveEpg(sourceId: String, guide: Map<String, List<Program>>) {

@@ -6,8 +6,8 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 2).
-- CI : tests unitaires, lint et assemblage passent (run 45990509451).
+- Version : `0.2.0-dev` (versionCode 3).
+- CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
   passe par GitHub Actions, et tout le comportement à l'écran reste à valider à la main
@@ -24,18 +24,20 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 23 tests, 5 classes | `app/src/test/` |
+| Tests unitaires | 35 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
+| Recherche sur le catalogue stocké : sans accents, classée, paginée, historique local | fait, non testé sur appareil | `data/TextNormalizer.kt`, `CatalogStore.search*`, `ui/SearchScreen.kt` |
 | Lint et tests en CI, « latest » protégée | fait | `.github/workflows/build.yml` |
 
 ## Reste à faire en P0
 
-1. **Signature stable des builds** (bloquant pour tester la migration, voir plus bas).
-2. Validation manuelle sur téléphone et Android TV de tout le tableau ci-dessus.
-3. Pagination du catalogue en base (Paging 3) et recherche indexée : le catalogue est encore chargé
-   entièrement en mémoire.
-4. Interface Android TV dédiée (barre latérale, focus initial, restauration du focus).
-5. Chaînes d'interface en ressources, français et anglais.
-6. Tests de migration Room (schéma exporté) quand le schéma évoluera ; tests UI Compose.
+1. Validation manuelle sur téléphone et Android TV de tout le tableau ci-dessus.
+2. Pagination des listes et grilles (Paging 3) : hors recherche, le catalogue est encore chargé
+   entièrement en mémoire pour l'accueil, les grilles, le direct et le guide.
+3. Interface Android TV dédiée (barre latérale, focus initial, restauration du focus).
+4. Chaînes d'interface en ressources, français et anglais.
+5. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
+6. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
 
 ## Décisions prises
 
@@ -48,15 +50,21 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 - **Les URLs Xtream ne sont pas stockées** en base : elles sont reconstruites depuis la source, ce qui
   évite de dupliquer les identifiants et rend le changement de format instantané.
 - **Durées de validité** : catalogue 12 h, guide 6 h. Non configurables pour l'instant.
+- **Recherche par `LIKE` sur une colonne normalisée** plutôt que FTS : suffisant pour des noms courts,
+  sans index à maintenir, et vérifiable par des tests sur base en mémoire. À réévaluer par la mesure sur
+  une source de 100 000 titres.
 - **Lint** : la fiche détaillée charge ses données avec `LaunchedEffect` ; `produceState` y déclenchait un
   faux positif de la règle `ProduceStateDoesNotAssignValue`.
 
 ## Points d'attention
 
-- **Signature des APK** : chaque exécution de GitHub Actions signe l'APK de debug avec une clé générée
-  pour l'occasion. Android refuse donc d'installer un build par-dessus un autre ; il faut désinstaller,
-  ce qui efface les sources. Tant qu'une clé de signature stable n'est pas en place, la migration depuis
-  la 0.1.0 ne peut pas être testée sur appareil. Décision attendue de l'utilisateur.
+- **Signature des APK** : les builds de debug sont signés avec la clé fixe `app/debug.keystore`
+  (mot de passe standard `android`), versionnée dans ce dépôt privé. Tout build à partir du commit qui
+  l'introduit s'installe par-dessus le précédent. Ce n'est pas une clé de production. La 0.1.0 a été
+  signée avec une clé jetable : il faut la désinstaller une fois, donc la migration de ses données ne
+  peut être vérifiée que par le test unitaire, pas sur l'appareil de l'utilisateur.
+- **Schéma Room en version 2** (colonne `search`) : le cache est reconstruit à la mise à jour, ce qui
+  déclenche un rechargement réseau au premier lancement.
 - **Récupération des APK** : depuis l'environnement de développement, les artefacts d'Actions ne sont pas
   téléchargeables ; seuls les fichiers de release le sont. L'utilisateur peut télécharger l'artefact
   `ArkaTV-debug` depuis la page du run.
@@ -64,8 +72,8 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 ## Prochaine action
 
-Mettre en place la signature stable (selon la décision de l'utilisateur), faire valider le build sur
-appareil, puis attaquer le point 3 (pagination et recherche indexée) avant toute refonte d'écran de P1.
+Faire valider le build sur appareil, puis attaquer le point 2 (pagination des listes et grilles) avant
+toute refonte d'écran de P1.
 
 ## Extension multimédia (téléchargements, PVR, timeshift, Cast, ArkaTV Connect)
 
