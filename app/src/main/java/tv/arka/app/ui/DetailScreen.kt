@@ -71,11 +71,12 @@ private fun episodeItem(vod: Vod, episode: Episode): PlayItem = PlayItem(
 fun DetailScreen(vod: Vod, onBack: () -> Unit) {
     val context = LocalContext.current
     val details by produceState<VodDetails?>(initialValue = null, vod.kind, vod.id) {
-        value = try {
+        val result = try {
             Repo.details(vod)
         } catch (e: Exception) {
             VodDetails(plot = vod.plot, year = vod.year)
         }
+        value = result
     }
     var selectedSeason by remember(vod.id) { mutableIntStateOf(-1) }
     val loaded = details
