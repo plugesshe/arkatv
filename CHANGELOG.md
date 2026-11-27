@@ -16,12 +16,19 @@
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
 ### Direct
+- Pause du direct (expérimental, à activer dans les paramètres) : en pause, la chaîne en MPEG-TS est
+  conservée sur l'appareil et reprend là où elle s'est arrêtée ; « Revenir au direct » rattrape le présent.
 - Lecteur du direct : « Depuis le début » relit le programme en cours depuis son commencement quand
   le fournisseur le conserve ; Retour revient à la chaîne.
 - Replay (sources Xtream) : appui long sur une chaîne › « Replay de la chaîne » liste les programmes
   que le fournisseur conserve et les relit depuis le début.
 - Groupes de chaînes personnels : appui long sur une chaîne pour l'ajouter à un groupe ou en créer un ;
   les groupes apparaissent dans le direct et dans le guide, par profil et par source.
+
+### Téléchargements
+- Films et épisodes téléchargeables depuis les réglages du lecteur ; ils continuent en arrière-plan.
+- Mon espace › Téléchargements : progression, lecture hors connexion, suppression, espace libre.
+- Un titre téléchargé est lu depuis l'appareil, sans réseau.
 
 ### Catalogue enrichi (TMDB)
 - Filtres « Langue » (français, VOSTFR, multi-langues) et « Qualité » (4K, Full HD, HD) sur les pages

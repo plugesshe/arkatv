@@ -174,3 +174,11 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Chaîne sans replay : message clair, aucune erreur.
 - [ ] Lecteur du direct : « Depuis le début » relance le programme en cours ; Retour revient au direct.
 - [ ] Si le replay ne démarre pas en .ts, l'autre format (.m3u8) est essayé.
+
+## Téléchargements et pause du direct — à vérifier sur appareil
+
+- [ ] Lecteur d'un film › Réglages › « Télécharger cette vidéo » : apparaît dans Mon espace › Téléchargements avec sa progression.
+- [ ] Téléchargement terminé : « Lire » fonctionne en mode avion ; « Supprimer » libère l'espace.
+- [ ] Flux HLS ou chaîne en direct : l'option de téléchargement n'est pas proposée.
+- [ ] Paramètres › « Pause du direct » activée : pause de deux minutes sur une chaîne, reprise au même endroit, « Revenir au direct ».
+- [ ] Option activée : le zapping reste aussi rapide ; sinon la désactiver et le signaler.

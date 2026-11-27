@@ -76,3 +76,11 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
 - La page de saisie à distance est en HTTP sur le réseau local : elle n'existe que tant que le bloc de
   réglages est affiché, demande un code à quatre chiffres tiré au hasard et se ferme après cinq erreurs
   ou dès qu'une valeur est acceptée. À n'utiliser que sur un réseau domestique.
+
+## Téléchargements et pause du direct
+
+- Les téléchargements passent par le gestionnaire du système ; les fichiers sont dans le dossier privé de
+  l'application sur le stockage partagé et disparaissent avec elle. L'adresse du flux (qui contient les
+  identifiants Xtream) n'est connue que du gestionnaire du système, jamais enregistrée par ArkaTV.
+- La pause du direct écrit le flux dans le cache de l'application, par morceaux supprimés dès qu'ils sont
+  lus, avec un plafond d'un tiers de l'espace libre et de 3 Go. Tout est effacé en quittant la chaîne.

@@ -96,6 +96,11 @@ import androidx.media3.ui.PlayerView
 import android.content.Intent
 import android.widget.Toast
 import kotlinx.coroutines.MainScope
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import tv.arka.app.data.Downloads
+import tv.arka.app.player.TimeshiftBuffer
+import tv.arka.app.player.TimeshiftDataSource
+import java.io.File
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -200,6 +205,13 @@ class PlayerActivity : ComponentActivity() {
     /** Position in the queue of the live channel watched just before the current one. */
     private var lastChannelIndex by mutableIntStateOf(-1)
     private var triedAlternative = false
+
+    /** Disk buffer of the live channel being watched, when "pause du direct" is on. */
+    private var timeshift: TimeshiftBuffer? = null
+    private var timeshiftFailed = false
+
+    /** True once a live channel has been paused: the picture is then behind the real broadcast. */
+    private var delayed by mutableStateOf(false)
     private var currentUrl = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -233,6 +245,12 @@ class PlayerActivity : ComponentActivity() {
                 val item = queue[index]
                 val alternative = alternativeUrl(currentUrl)
                 when {
+                    // The disk buffer must never be the reason a channel does not play.
+                    timeshift != null -> {
+                        timeshiftFailed = true
+                        delayed = false
+                        start(currentUrl, 0)
+                    }
                     error.errorCode == PlaybackException.ERROR_CODE_BEHIND_LIVE_WINDOW -> {
                         exo.seekToDefaultPosition()
                         exo.prepare()
@@ -249,8 +267,17 @@ class PlayerActivity : ComponentActivity() {
                 }
             }
 
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && timeshift != null) delayed = true
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) errorText = null
+                // A paused channel that used all the room it was given goes back to the present.
+                if (playbackState == Player.STATE_ENDED && queue[index].live && timeshift != null) {
+                    delayed = false
+                    start(queue[index].url, 0)
+                }
                 if (playbackState == Player.STATE_ENDED && !queue[index].live) {
                     persist()
                     if (index < queue.lastIndex) load(index + 1) else finish()
@@ -267,7 +294,7 @@ class PlayerActivity : ComponentActivity() {
             scope.launch {
                 val season = Repo.episodeQueue(single)
                 if (season != null && queue.size == 1 && queue[0].key == single.key && !isFinishing) {
-                    queue = season.first
+                    queue = Downloads.resolve(applicationContext, season.first)
                     index = season.second
                 }
             }
@@ -297,6 +324,8 @@ class PlayerActivity : ComponentActivity() {
                     onNext = { load(index + 1) },
                     onLastChannel = { goToLastChannel() },
                     onStartOver = { startOverLive() },
+                    delayed = delayed,
+                    onBackToLive = { load(index) },
                     onRetry = { retry() },
                     onPip = { enterPip() },
                 )
@@ -310,6 +339,8 @@ class PlayerActivity : ComponentActivity() {
         val previous = index
         index = ((target % queue.size) + queue.size) % queue.size
         triedAlternative = false
+        timeshiftFailed = false
+        delayed = false
         errorText = null
         val item = queue[index]
         if (item.live) {
@@ -326,7 +357,22 @@ class PlayerActivity : ComponentActivity() {
     private fun start(url: String, position: Long) {
         val exo = player ?: return
         currentUrl = url
-        exo.setMediaItem(MediaItem.fromUri(url), position)
+        timeshift?.stop()
+        timeshift = null
+        val live = queue.getOrNull(index)?.live == true
+        // Paused live: the stream goes through a disk buffer that keeps recording while the picture
+        // is stopped. A third of the free space at most, never more than 3 GB, and not at all when
+        // the device is nearly full.
+        val limit = minOf(3L * 1024 * 1024 * 1024, cacheDir.usableSpace / 3)
+        if (live && Store.livePause && !timeshiftFailed && limit > 128L * 1024 * 1024 && url.substringBefore('?').endsWith(".ts")) {
+            val buffer = TimeshiftBuffer(File(cacheDir, "timeshift"), url, limit)
+            timeshift = buffer
+            exo.setMediaSource(
+                ProgressiveMediaSource.Factory { TimeshiftDataSource(buffer) }.createMediaSource(MediaItem.fromUri(url))
+            )
+        } else {
+            exo.setMediaItem(MediaItem.fromUri(url), position)
+        }
         exo.prepare()
         exo.playWhenReady = true
     }
@@ -563,6 +609,8 @@ class PlayerActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         scope.cancel()
+        timeshift?.stop()
+        timeshift = null
         player?.release()
         player = null
     }
@@ -707,6 +755,8 @@ private fun PlayerScreen(
     onNext: () -> Unit,
     onLastChannel: () -> Unit,
     onStartOver: () -> Unit,
+    delayed: Boolean,
+    onBackToLive: () -> Unit,
     onRetry: () -> Unit,
     onPip: () -> Unit,
 ) {
@@ -1160,6 +1210,7 @@ private fun PlayerScreen(
                     }
                     Spacer(Modifier.weight(1f))
                     Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                        if (item.live && delayed) PlayerPill("● Revenir au direct") { activity++; onBackToLive() }
                         if (item.live && item.key.startsWith("c:") && Repo.active?.type == "xtream") {
                             PlayerPill("Depuis le début") { activity++; onStartOver() }
                         }
@@ -1354,6 +1405,16 @@ private fun PlayerScreen(
                         })
                     }
                     SheetOption("Diagnostics", showStats, onClick = { showStats = !showStats })
+                    if (Downloads.canDownload(item)) {
+                        val kept = Downloads.has(item.key)
+                        SheetOption(if (kept) "Dans vos téléchargements" else "Télécharger cette vidéo", kept, onClick = {
+                            if (!kept) {
+                                hint = Downloads.start(context.applicationContext, item) ?: "Téléchargement lancé"
+                                hintTick++
+                                panel = PANEL_NONE
+                            }
+                        })
+                    }
                     SheetOption("Mini-lecteur", false, onClick = {
                         panel = PANEL_NONE
                         onPip()

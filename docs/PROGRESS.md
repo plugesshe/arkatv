@@ -193,3 +193,15 @@ rapprochement n'a été vérifié que par des tests sur des réponses d'exemple.
 | Saisie de la clé depuis un autre appareil | fait, à valider |
 | Filtres langue / qualité dans le catalogue | à faire |
 | Bandes-annonces | à décider (YouTube) |
+
+## Lot « replay, téléchargements, pause du direct » (27/11/2026)
+
+Compilé en CI, non testé sur appareil. La pause du direct est désactivée par défaut tant qu'elle n'a pas
+été validée : en cas d'erreur de lecture, le lecteur repasse de lui-même au flux direct sans tampon.
+
+| Sujet | État |
+|---|---|
+| Replay des chaînes, « Depuis le début » | fait, à valider |
+| Téléchargements (lecteur › Réglages, Mon espace › Téléchargements) | fait, à valider |
+| Pause du direct sur disque | fait, expérimental |
+| Retour arrière dans le direct, enregistrement programmé, multiview, Cast, ArkaTV Connect | à faire |

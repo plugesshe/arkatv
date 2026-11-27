@@ -127,6 +127,20 @@ object Store {
         get() = p().getString("active", null)
         set(value) = p().edit().putString("active", value).apply()
 
+    /** Experimental: keep a paused live channel on disk so that it resumes where it stopped. */
+    var livePause: Boolean
+        get() = p().getBoolean("live_pause", false)
+        set(value) = p().edit().putBoolean("live_pause", value).apply()
+
+    fun loadDownloads(): List<DownloadEntry> = readArray("downloads") { o ->
+        DownloadEntry(o.optLong("id"), o.optString("key"), o.optString("title"), o.optString("subtitle"), o.optString("poster"), o.optString("path"))
+    }
+
+    fun saveDownloads(list: List<DownloadEntry>) = writeArray("downloads", list) { entry ->
+        JSONObject().put("id", entry.id).put("key", entry.key).put("title", entry.title).put("subtitle", entry.subtitle)
+            .put("poster", entry.poster).put("path", entry.path)
+    }
+
     /** The user's own TMDB read token. Kept encrypted, never written anywhere else. */
     var tmdbToken: String
         get() = readBlob("tmdb").orEmpty()

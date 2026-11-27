@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import tv.arka.app.data.Downloads
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Source
 import tv.arka.app.data.Store
@@ -74,6 +75,7 @@ private const val SECTION_MENU = 0
 private const val SECTION_SOURCES = 1
 private const val SECTION_HISTORY = 2
 private const val SECTION_SETTINGS = 3
+private const val SECTION_DOWNLOADS = 4
 
 /** Mon espace entry screen: the profile, followed series, then the sections. TV shows tiles instead of a list. */
 @Composable
@@ -117,6 +119,7 @@ private fun ProfileMenu(
             onList("Séries suivies", Repo.followed)
         },
         MenuEntry("Historique", if (Repo.progress.isEmpty()) "vide" else "${Repo.progress.size} en cours") { onSection(SECTION_HISTORY) },
+        if (kids) null else MenuEntry("Téléchargements", if (Downloads.entries.isEmpty()) "aucun" else Downloads.entries.size.toString()) { onSection(SECTION_DOWNLOADS) },
         if (kids) null else MenuEntry("Sources", Repo.sources.size.toString()) { onSection(SECTION_SOURCES) },
         if (kids) null else MenuEntry("Paramètres", "") { onSection(SECTION_SETTINGS) },
     )
@@ -243,12 +246,14 @@ fun ProfileScreen(
     onParental: () -> Unit,
 ) {
     var liveFormat by remember { mutableStateOf(Store.liveFormat) }
+    var livePause by remember { mutableStateOf(Store.livePause) }
     var toDelete by remember { mutableStateOf<Source?>(null) }
     var refreshHours by remember { mutableIntStateOf(Store.catalogRefreshHours) }
     var toEdit by remember { mutableStateOf<Source?>(null) }
     var chosenSection by rememberSaveable { mutableIntStateOf(SECTION_MENU) }
     // Switching to a child profile while a protected section is open falls back to the menu.
-    val protectedSection = chosenSection == SECTION_SOURCES || chosenSection == SECTION_SETTINGS
+    val protectedSection = chosenSection == SECTION_SOURCES || chosenSection == SECTION_SETTINGS ||
+        chosenSection == SECTION_DOWNLOADS
     val section = if (Repo.activeProfile.kids && protectedSection) SECTION_MENU else chosenSection
     BackHandler(enabled = section != SECTION_MENU) { chosenSection = SECTION_MENU }
 
@@ -260,6 +265,7 @@ fun ProfileScreen(
                 when (section) {
                     SECTION_SOURCES -> "Sources"
                     SECTION_HISTORY -> "Historique"
+                    SECTION_DOWNLOADS -> "Téléchargements"
                     else -> "Paramètres"
                 },
                 onBack = { chosenSection = SECTION_MENU },
@@ -268,6 +274,9 @@ fun ProfileScreen(
 
         if (section == SECTION_HISTORY) {
             HistorySection()
+        }
+        if (section == SECTION_DOWNLOADS) {
+            DownloadsSection()
         }
 
         if (section == SECTION_SOURCES) {
@@ -373,6 +382,19 @@ fun ProfileScreen(
         }
         Text(
             "Si une chaîne ne démarre pas, l'autre format est essayé automatiquement.",
+            color = ArkaMuted,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 16.dp),
+        )
+        Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp)) {
+            ArkaChip(if (livePause) "Pause du direct (expérimental) : oui" else "Pause du direct (expérimental) : non", livePause) {
+                livePause = !livePause
+                Store.livePause = livePause
+            }
+        }
+        Text(
+            "En pause, la chaîne (format MPEG-TS) est conservée sur l'appareil pour reprendre là où vous étiez. " +
+                "Si le direct ne démarre plus, désactivez cette option.",
             color = ArkaMuted,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 16.dp),

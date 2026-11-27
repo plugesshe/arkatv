@@ -9,6 +9,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import coil.Coil
+import tv.arka.app.data.Downloads
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
@@ -125,7 +126,8 @@ fun Vod.toPlayItem(): PlayItem =
 fun play(context: Context, queue: List<PlayItem>, index: Int, startOver: Boolean = false) {
     if (queue.isEmpty()) return
     PlayerSession.startOver = startOver
-    PlayerSession.queue = queue
+    // Titles that have a finished download are played from the device.
+    PlayerSession.queue = Downloads.resolve(context.applicationContext, queue)
     PlayerSession.index = index.coerceIn(0, queue.lastIndex)
     context.startActivity(Intent(context, PlayerActivity::class.java))
 }
