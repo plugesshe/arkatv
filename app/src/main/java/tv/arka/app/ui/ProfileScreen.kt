@@ -5,6 +5,9 @@ package tv.arka.app.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.size
+import tv.arka.app.R
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -264,79 +267,80 @@ fun ProfileScreen(
         if (section == SECTION_SOURCES) {
         Repo.sources.forEach { source ->
             val active = Repo.active?.id == source.id
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(if (active) ArkaRedDark else ArkaCard)
+            val shape = RoundedCornerShape(ArkaRadius.md)
+            Column(
+                Modifier.fillMaxWidth().padding(horizontal = ArkaTheme.margin, vertical = 6.dp)
+                    .focusHighlight(ArkaRadius.md, 1f)
+                    .clip(shape)
+                    .background(ArkaColors.Surface)
+                    .then(if (active) Modifier.border(1.dp, ArkaColors.Border, shape) else Modifier)
                     .clickable { if (!active) Repo.select(source) }
-                    .padding(start = 14.dp, top = 6.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                    .padding(ArkaSpacing.lg),
             ) {
-                Column(Modifier.weight(1f)) {
-                    Text(source.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(
-                        (if (source.type == "xtream") "Xtream Codes" else "Playlist M3U") + if (active) " · active" else "",
-                        color = ArkaMuted,
-                        fontSize = 12.sp,
-                    )
-                    val account = if (active) Repo.account else null
-                    if (account != null) {
-                        val parts = listOfNotNull(
-                            if (account.expiresAt > 0) "Expire le " + formatDate(account.expiresAt) else null,
-                            if (account.maxConnections > 0) {
-                                "${account.activeConnections} connexion(s) utilisée(s) sur ${account.maxConnections}"
-                            } else {
-                                null
-                            },
-                        )
-                        if (parts.isNotEmpty()) {
-                            Text(parts.joinToString(" · "), color = ArkaMuted, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(source.name, style = ArkaTheme.type.heading, fontWeight = FontWeight(700), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        // State: a coloured dot always comes with its label.
+                        val kind = if (source.type == "xtream") "Xtream" else "M3U"
+                        val (dot, state) = when {
+                            !active -> ArkaColors.TextDisabled to "Non active"
+                            Repo.loading || Repo.refreshing -> ArkaColors.Warning to "Actualisation…"
+                            Repo.error != null || Repo.syncError != null -> ArkaColors.Error to "Injoignable"
+                            else -> ArkaColors.Ok to "Connectée"
                         }
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                            Box(Modifier.size(8.dp).clip(RoundedCornerShape(ArkaRadius.pill)).background(dot))
+                            Text("  $state · $kind", color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, fontWeight = FontWeight(500))
+                        }
+                    }
+                    if (active) {
+                        Box(Modifier.size(ArkaSize.touchMin).clip(RoundedCornerShape(ArkaRadius.pill)).clickable { Repo.reload() }, contentAlignment = Alignment.Center) {
+                            ArkaIcon(R.drawable.ic_arka_actualiser, "Actualiser")
+                        }
+                    }
+                    Box(Modifier.size(ArkaSize.touchMin).clip(RoundedCornerShape(ArkaRadius.pill)).clickable { toEdit = source }, contentAlignment = Alignment.Center) {
+                        ArkaIcon(R.drawable.ic_arka_plus_options, "Renommer ou déplacer", tint = ArkaColors.TextSecondary)
+                    }
+                    Box(Modifier.size(ArkaSize.touchMin).clip(RoundedCornerShape(ArkaRadius.pill)).clickable { toDelete = source }, contentAlignment = Alignment.Center) {
+                        ArkaIcon(R.drawable.ic_arka_fermer, "Supprimer", tint = ArkaColors.TextSecondary)
                     }
                 }
                 if (active) {
-                    IconButton(onClick = { Repo.reload() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = "Recharger")
+                    Row(Modifier.padding(top = ArkaSpacing.md), horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.xl)) {
+                        Counter(Repo.movieCount, "films")
+                        Counter(Repo.seriesCount, "séries")
+                        Counter(Repo.channels.size, "chaînes")
                     }
-                }
-                IconButton(onClick = { toEdit = source }) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Renommer ou déplacer", tint = ArkaMuted)
-                }
-                IconButton(onClick = { toDelete = source }) {
-                    Icon(Icons.Filled.Delete, contentDescription = "Supprimer", tint = ArkaMuted)
+                    val account = Repo.account
+                    val details = listOfNotNull(
+                        account?.takeIf { it.expiresAt > 0 }?.let { "Expire le " + formatDate(it.expiresAt) },
+                        account?.takeIf { it.maxConnections > 0 }?.let { "${it.activeConnections} connexion(s) utilisée(s) sur ${it.maxConnections}" },
+                        if (Repo.lastSync > 0) "Actualisée le " + formatDateTime(Repo.lastSync / 1000) else null,
+                        if (Repo.epgLoading) "Guide en cours de mise à jour" else "Guide : ${Repo.epg.size} chaînes",
+                    )
+                    Text(
+                        details.joinToString(" · "),
+                        color = ArkaColors.TextSecondary,
+                        style = ArkaTheme.type.label,
+                        fontWeight = FontWeight(500),
+                        modifier = Modifier.padding(top = ArkaSpacing.sm),
+                    )
+                    val problem = Repo.error ?: Repo.syncError
+                    if (problem != null && !Repo.refreshing && !Repo.loading) {
+                        Text(
+                            "Actualisation impossible ($problem). Le dernier catalogue enregistré reste affiché ; la lecture demande toujours une connexion.",
+                            color = ArkaColors.Error,
+                            style = ArkaTheme.type.label,
+                            fontWeight = FontWeight(500),
+                            modifier = Modifier.padding(top = ArkaSpacing.xs),
+                        )
+                    }
                 }
             }
         }
-        TextButton(onClick = onAddSource, modifier = Modifier.padding(horizontal = 8.dp)) {
-            Icon(Icons.Filled.Add, contentDescription = null)
-            Spacer(Modifier.width(6.dp))
-            Text("Ajouter une source")
+        Box(Modifier.padding(horizontal = ArkaTheme.margin, vertical = ArkaSpacing.md)) {
+            SecondaryButton("Ajouter une source", onAddSource, icon = R.drawable.ic_arka_ajouter)
         }
-
-        val status = when {
-            Repo.loading -> "Chargement en cours…"
-            Repo.error != null -> "Erreur : ${Repo.error}"
-            else -> "${Repo.channels.size} chaînes · ${Repo.movieCount} films · ${Repo.seriesCount} séries" +
-                if (Repo.epgLoading) " · guide en cours de mise à jour" else " · guide : ${Repo.epg.size} chaînes"
-        }
-        Text(status, color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
-        val sync = when {
-            Repo.refreshing -> "Actualisation du catalogue en arrière-plan…"
-            Repo.syncError != null ->
-                "Actualisation impossible (${Repo.syncError}). Le dernier catalogue enregistré reste affiché ; " +
-                    "la lecture demande toujours une connexion."
-            Repo.lastSync > 0 -> "Catalogue actualisé le " + formatDateTime(Repo.lastSync / 1000)
-            else -> ""
-        }
-        if (sync.isNotBlank()) {
-            Text(
-                sync,
-                color = if (Repo.syncError != null && !Repo.refreshing) ArkaError else ArkaMuted,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
-        }
-
         }
 
         if (section == SECTION_SETTINGS) {
@@ -448,124 +452,4 @@ fun ProfileScreen(
             dismissButton = { TextButton(onClick = { toDelete = null }) { Text("Annuler") } },
         )
     }
-}
-
-@Composable
-fun AddSourceScreen(onBack: (() -> Unit)?, onDone: () -> Unit) {
-    val scope = rememberCoroutineScope()
-    var type by rememberSaveable { mutableIntStateOf(0) }
-    var name by rememberSaveable { mutableStateOf("") }
-    var url by rememberSaveable { mutableStateOf("") }
-    var user by rememberSaveable { mutableStateOf("") }
-    var pass by rememberSaveable { mutableStateOf("") }
-    var epg by rememberSaveable { mutableStateOf("") }
-    var busy by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    Column(
-        Modifier.fillMaxSize().systemBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (onBack != null) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour")
-                }
-            }
-            Logo()
-        }
-        Text("Ajouter une source", fontSize = 22.sp, fontWeight = FontWeight.Black)
-        Text(
-            "Renseignez l'accès fourni par votre opérateur. Tout reste stocké sur cet appareil.",
-            color = ArkaMuted,
-            fontSize = 13.sp,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            ArkaChip("Xtream Codes", type == 0) { type = 0 }
-            ArkaChip("Playlist M3U", type == 1) { type = 1 }
-        }
-
-        Field("Nom (libre)", name) { name = it }
-        if (type == 0) {
-            Field("URL du serveur (http://exemple.com:8080)", url, KeyboardType.Uri) { url = it }
-            Field("Identifiant", user) { user = it }
-            Field("Mot de passe", pass, KeyboardType.Password, password = true) { pass = it }
-            Field("URL du guide XMLTV (facultatif)", epg, KeyboardType.Uri) { epg = it }
-        } else {
-            Field("URL de la playlist M3U", url, KeyboardType.Uri) { url = it }
-            Field("URL du guide XMLTV (facultatif)", epg, KeyboardType.Uri) { epg = it }
-        }
-
-        if (url.trim().startsWith("http://", ignoreCase = true)) {
-            Text(
-                "Cette adresse utilise HTTP : la connexion avec le fournisseur, identifiants compris, " +
-                    "n'est pas chiffrée. Utilisez l'adresse https:// si votre fournisseur en propose une.",
-                color = ArkaMuted,
-                fontSize = 12.sp,
-            )
-        }
-        error?.let { Text(it, color = ArkaError, fontSize = 13.sp) }
-
-        Button(
-            enabled = !busy && url.isNotBlank() && (type == 1 || (user.isNotBlank() && pass.isNotBlank())),
-            onClick = {
-                val source = Source(
-                    id = UUID.randomUUID().toString(),
-                    type = if (type == 0) "xtream" else "m3u",
-                    name = name.trim().ifBlank { if (type == 0) "Xtream" else "Playlist" },
-                    url = url.trim(),
-                    user = user.trim(),
-                    pass = pass.trim(),
-                    epgUrl = epg.trim(),
-                )
-                error = null
-                if (type == 0) {
-                    busy = true
-                    scope.launch {
-                        try {
-                            withContext(Dispatchers.IO) { XtreamApi(source).authenticate() }
-                            Repo.addSource(source)
-                            onDone()
-                        } catch (e: Exception) {
-                            error = e.message ?: "Connexion impossible"
-                        } finally {
-                            busy = false
-                        }
-                    }
-                } else {
-                    Repo.addSource(source)
-                    onDone()
-                }
-            },
-            shape = RoundedCornerShape(8.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = ArkaRed, contentColor = Color.White),
-            modifier = Modifier.fillMaxWidth().height(50.dp),
-        ) {
-            if (busy) {
-                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.height(20.dp).width(20.dp))
-            } else {
-                Text("Se connecter")
-            }
-        }
-    }
-}
-
-@Composable
-private fun Field(
-    label: String,
-    value: String,
-    keyboard: KeyboardType = KeyboardType.Text,
-    password: Boolean = false,
-    onChange: (String) -> Unit,
-) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onChange,
-        label = { Text(label) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = keyboard),
-        visualTransformation = if (password) PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
-        shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth(),
-    )
 }

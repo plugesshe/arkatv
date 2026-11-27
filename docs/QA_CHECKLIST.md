@@ -105,3 +105,14 @@ un vrai téléphone et une vraie Android TV.
 
 ### Charge
 - [ ] Source volumineuse : temps de démarrage sur cache et mémoire (voir `PERFORMANCE.md`).
+
+## Ajout et gestion des sources (0.2.0-dev, build 13) — à vérifier sur appareil
+
+- [ ] Premier lancement : étape 1, choix Xtream / M3U, « Continuer ».
+- [ ] Adresse en http:// : avertissement affiché, ajout non bloqué.
+- [ ] Mauvais mot de passe : « Identifiants refusés » ; serveur inexistant : « Connexion impossible ».
+- [ ] Étape 3 : compteurs cohérents, « Commencer » actif seulement une fois le catalogue chargé.
+- [ ] Playlist M3U invalide : « Source inaccessible », « Modifier la source » revient au formulaire.
+- [ ] TV : tout le parcours à la télécommande, saisie au clavier virtuel.
+- [ ] Mon espace → Sources : état, actualiser, renommer, supprimer.
+- [ ] Mode avion avec catalogue en cache : bandeau « Hors connexion », « Réessayer » relance.

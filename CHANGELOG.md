@@ -15,6 +15,12 @@
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
+### Sources
+- Ajout d'une source en trois étapes : type, connexion vérifiée avant enregistrement, résumé du contenu trouvé.
+- Identifiants refusés distingués d'un serveur injoignable.
+- Cartes de sources : état, nombre de films, séries et chaînes, expiration, connexions, dernière actualisation.
+- Bandeau « Hors connexion · catalogue en cache » avec « Réessayer », et indication d'actualisation en arrière-plan.
+
 ### Catalogue
 - Grilles triables : ordre par défaut, ajouts récents, A – Z, année, note.
 - Les catégories vides ne sont plus proposées.

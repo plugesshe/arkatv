@@ -132,8 +132,10 @@ private fun App() {
         }
     }
 
-    if (Repo.sources.isEmpty()) {
-        AddSourceScreen(onBack = null, onDone = {})
+    // First launch: the set-up stays on screen until its last step is confirmed.
+    var onboarding by remember { mutableStateOf(Repo.sources.isEmpty()) }
+    if (onboarding || Repo.sources.isEmpty()) {
+        AddSourceScreen(onBack = null, onDone = { onboarding = false })
         return
     }
 
@@ -223,6 +225,7 @@ private fun MainShell(
             val top = if (destination == Destination.HOME) 0.dp else padding.calculateTopPadding()
             Box(Modifier.fillMaxSize().padding(top = top, bottom = padding.calculateBottomPadding())) {
                 content()
+                ConnectionBanner(Modifier.align(Alignment.BottomCenter))
             }
         }
     }
@@ -295,6 +298,7 @@ private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, conte
     Box(Modifier.fillMaxSize()) {
         Box(Modifier.fillMaxSize().padding(start = ArkaSize.tvSidebarCollapsed)) {
             content()
+            ConnectionBanner(Modifier.align(Alignment.TopEnd))
         }
         if (expanded) {
             Box(Modifier.fillMaxSize().background(ArkaColors.Scrim.copy(alpha = 0.4f)))
@@ -339,6 +343,43 @@ private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, conte
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Says when the catalogue on screen comes from the cache because the source could not be reached,
+ * or when a refresh is running behind the content. Hidden the rest of the time.
+ */
+@Composable
+private fun ConnectionBanner(modifier: Modifier) {
+    val problem = Repo.syncError
+    val refreshing = Repo.refreshing
+    if (problem == null && !refreshing) return
+    Row(
+        modifier.padding(horizontal = ArkaTheme.margin, vertical = 8.dp)
+            .clip(RoundedCornerShape(ArkaRadius.pill))
+            .background(ArkaColors.SurfaceHigh)
+            .padding(start = 14.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (refreshing) {
+            Text("Actualisation en arrière-plan…", color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp))
+        } else {
+            ArkaIcon(R.drawable.ic_arka_hors_ligne, null, tint = ArkaColors.Warning, size = 16.dp)
+            Text(
+                "Hors connexion · catalogue en cache",
+                color = ArkaColors.TextPrimary,
+                style = ArkaTheme.type.label,
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+            )
+            Text(
+                "Réessayer",
+                color = ArkaColors.TextPrimary,
+                style = ArkaTheme.type.label,
+                fontWeight = FontWeight(700),
+                modifier = Modifier.focusHighlight(ArkaRadius.sm, 1f).clip(RoundedCornerShape(ArkaRadius.pill)).clickable { Repo.reload() }.padding(8.dp),
+            )
         }
     }
 }
