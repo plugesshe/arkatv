@@ -63,6 +63,17 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Guide : programmes passés atténués ; toucher un programme ouvre son détail ; en cours = lecture.
 - [ ] Guide TV : le détail en tête suit le focus.
 
+### Lecteur, recherche, Mon espace (nouveau design)
+- [ ] Lecteur mobile : un toucher affiche / masque les commandes ; double toucher gauche / droite = ∓10 s
+      cumulés ; appui long = 2× tant que maintenu ; glisser horizontal = recherche ; vertical droite =
+      volume, gauche = luminosité. Vérifier qu'un glisser ne déclenche pas aussi un toucher.
+- [ ] Lecteur : « Audio · ST » et « ⋯ » ouvrent un panneau à droite ; toucher hors du panneau le ferme.
+- [ ] Lecteur direct : « Chaînes » ouvre la liste à gauche ; bandeau « Épisodes » pour une série.
+- [ ] Lecteur TV : focus sur Lecture / Pause à l'affichage ; Retour masque les commandes puis quitte.
+- [ ] Recherche : filtres avec compteurs, mot cherché en rouge dans les titres, × sur une recherche récente.
+- [ ] Recherche TV : la grille de lettres compose la recherche ; Effacer retire une lettre.
+- [ ] Mon espace : menu, puis Sources, Historique (reprendre, effacer) et Paramètres ; Retour revient au menu.
+
 ### Recherche
 - [ ] « heritiers » trouve « Les Héritiers du Vent » ; deux mots dans le désordre fonctionnent.
 - [ ] Une recherche large charge la suite en faisant défiler les affiches ; « Afficher plus de chaînes ».

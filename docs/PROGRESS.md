@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 11).
+- Version : `0.2.0-dev` (versionCode 12).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -66,11 +66,12 @@ pour lecture ; aucune comparaison visuelle avec l'application n'a pu être faite
 | Écrans 3 — Direct | refait : ligne de chaîne (numéro, logo, programme, avancement, heure de fin), TV en trois zones (groupes, chaînes, détail du programme) ; sans aperçu vidéo, mini-lecteur ni groupes personnalisés |
 | Écrans 3 — Guide TV | refait : ligne « maintenant », passé atténué, programme en cours mis en avant, retour à maintenant, détail en feuille (mobile) ou en tête d'écran (TV) ; sans navigation par jour, replay ni enregistrement |
 | Écrans 3 — Multiview | fonctionnalité inexistante |
-| Écrans 4 — Lecteur | à faire |
-| Écrans 5 — Recherche et Mon espace | à faire |
+| Écrans 4 — Lecteur | refait : commandes minimales, panneaux latéraux (audio / sous-titres, réglages, chaînes), bandeau d'épisodes, carte « épisode suivant », erreurs ; gestes tactiles (double toucher, appui long 2×, glisser pour chercher, volume, luminosité) ; sans Cast, enregistrement, timeshift, aperçu sur la barre, pincement ni verrou |
+| Écrans 5 — Recherche | refait : champ, filtres avec compteurs, correspondance surlignée, recherches récentes, genres, grille de lettres sur TV ; sans programmes du guide, personnes ni recherche vocale |
+| Écrans 5 — Mon espace | refait : profil, séries suivies, menu (Ma liste, Historique, Sources, Paramètres), tuiles sur TV ; sans téléchargements, enregistrements ni contrôle parental (inexistants) |
 | Écrans 6 — Appareils (Cast, Connect) | fonctionnalités inexistantes |
 | Écrans 7 et 8 — États, variantes, compléments | à faire |
-| Prototypes TV et lecteur mobile (gestes) | à faire |
+| Prototypes TV et lecteur mobile (gestes) | gestes du lecteur faits (voir Lecteur) ; parcours TV repris écran par écran |
 
 Ordre prévu : fiches film et série, puis direct et guide, lecteur, recherche et Mon espace, démarrage et
 sources. Les écrans de fonctionnalités inexistantes (téléchargements, enregistrements, profils, Cast,
@@ -116,6 +117,9 @@ Connect, multiview, contrôle parental) ne seront dessinés qu'avec la fonctionn
   faux positif de la règle `ProduceStateDoesNotAssignValue`.
 
 ## Points d'attention
+
+- **Gestes du lecteur** : écrits sans pouvoir être essayés. Deux détecteurs de gestes cohabitent (toucher
+  et glisser) ; un conflit entre eux ne se verra que sur appareil.
 
 - **Le lecteur a été réécrit sans pouvoir être lancé** : c'est la partie la plus exposée à un défaut
   invisible en CI (aucun test ne couvre l'affichage ni la lecture). À vérifier en premier sur appareil.

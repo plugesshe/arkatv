@@ -109,6 +109,38 @@ import tv.arka.app.ui.formatClock
 import tv.arka.app.ui.isTelevision
 import tv.arka.app.ui.formatDuration
 import tv.arka.app.ui.rememberNow
+import android.app.Activity
+import android.content.Context
+import android.media.AudioManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
+import tv.arka.app.ui.ArkaBadge
+import tv.arka.app.ui.ArkaChip
+import tv.arka.app.ui.ArkaColors
+import tv.arka.app.ui.ArkaIcon
+import tv.arka.app.ui.ArkaImage
+import tv.arka.app.ui.ArkaMotion
+import tv.arka.app.ui.ArkaSize
+import tv.arka.app.ui.ArkaSpacing
+import tv.arka.app.ui.LocalIsTv
+import tv.arka.app.ui.PrimaryButton
+import tv.arka.app.ui.SecondaryButton
+import tv.arka.app.ui.SheetOption
+import tv.arka.app.ui.focusHighlight
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -462,8 +494,24 @@ private fun diagnostics(player: ExoPlayer, item: PlayItem): List<Pair<String, St
 
 private val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
 
-private fun speedLabel(speed: Float): String = if (speed == 1f) "Normale" else "×" + speed.toString().removeSuffix(".0")
+private fun speedLabel(speed: Float): String = if (speed == 1f) "1×" else speed.toString().removeSuffix(".0") + "×"
 
+private const val PANEL_NONE = 0
+private const val PANEL_TRACKS = 1
+private const val PANEL_SETTINGS = 2
+private const val PANEL_QUEUE = 3
+
+private const val DRAG_NONE = 0
+private const val DRAG_SEEK = 1
+private const val DRAG_VOLUME = 2
+private const val DRAG_BRIGHTNESS = 3
+
+/**
+ * Player controls. Minimal on screen, everything else in panels.
+ * Touch gestures (handsets): tap shows or hides the controls, double tap seeks 10 s (cumulative),
+ * long press plays at 2× while held, horizontal drag seeks, vertical drag sets the volume (right half)
+ * or the brightness of the app (left half).
+ */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun PlayerScreen(
@@ -488,20 +536,28 @@ private fun PlayerScreen(
     onRetry: () -> Unit,
     onPip: () -> Unit,
 ) {
+    val tv = LocalIsTv.current
+    val context = LocalContext.current
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(true) }
     var buffering by remember { mutableStateOf(true) }
     var zoom by remember { mutableStateOf(false) }
     var drag by remember { mutableStateOf<Float?>(null) }
-    var showTracks by remember { mutableStateOf(false) }
-    var showSpeed by remember { mutableStateOf(false) }
-    var showQueue by remember { mutableStateOf(false) }
+    var panel by remember { mutableIntStateOf(PANEL_NONE) }
     var showStats by remember { mutableStateOf(false) }
     var stats by remember { mutableStateOf(listOf<Pair<String, String>>()) }
     var speed by remember { mutableFloatStateOf(1f) }
     var activity by remember { mutableIntStateOf(0) }
+    // Short feedback for a gesture: "−30 s", "Volume 60 %", "2×"…
+    var hint by remember { mutableStateOf<String?>(null) }
+    var hintTick by remember { mutableIntStateOf(0) }
+    var tapSeek by remember { mutableLongStateOf(0L) }
     val now = rememberNow()
+
+    val overlayNow by rememberUpdatedState(overlay)
+    val speedNow by rememberUpdatedState(speed)
+    val durationNow by rememberUpdatedState(duration)
 
     LaunchedEffect(player, showStats, item.key) {
         while (true) {
@@ -517,18 +573,38 @@ private fun PlayerScreen(
         // Live streams always play at normal speed.
         player.setPlaybackSpeed(if (item.live) 1f else speed)
     }
-    val dialogOpen = showTracks || showSpeed || showQueue
-    LaunchedEffect(overlay, activity, dialogOpen, error, pendingNext) {
-        if (overlay && !dialogOpen && error == null && !pendingNext) {
-            delay(5000)
+    LaunchedEffect(overlay, activity, panel, error, pendingNext) {
+        if (overlay && panel == PANEL_NONE && error == null && !pendingNext) {
+            delay(if (tv) 5000 else 3000)
             onOverlay(false)
+        }
+    }
+    LaunchedEffect(hintTick) {
+        if (hintTick > 0) {
+            delay(800)
+            hint = null
+            tapSeek = 0
+        }
+    }
+    BackHandler(enabled = panel != PANEL_NONE) { panel = PANEL_NONE }
+    // On TV, Back first hides the controls, then leaves the player.
+    BackHandler(enabled = tv && overlay && panel == PANEL_NONE && error == null) { onOverlay(false) }
+
+    val playFocus = remember { FocusRequester() }
+    if (tv && overlay && panel == PANEL_NONE && error == null && !pendingNext) {
+        LaunchedEffect(Unit) {
+            try {
+                playFocus.requestFocus()
+            } catch (e: IllegalStateException) {
+                // Controls not laid out yet.
+            }
         }
     }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
-            factory = { context ->
-                val view = PlayerView(context)
+            factory = { viewContext ->
+                val view = PlayerView(viewContext)
                 view.useController = false
                 view.player = player
                 view
@@ -538,185 +614,313 @@ private fun PlayerScreen(
             },
             modifier = Modifier.fillMaxSize(),
         )
+
+        // Gesture surface, under the controls.
         Box(
-            Modifier.fillMaxSize().clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-            ) { onOverlay(!overlay) }
+            Modifier.fillMaxSize()
+                .pointerInput(item.key, item.live) {
+                    var holding = false
+                    detectTapGestures(
+                        onTap = { onOverlay(!overlayNow) },
+                        onDoubleTap = { offset ->
+                            if (!item.live) {
+                                val step = if (offset.x < size.width / 2) -10_000L else 10_000L
+                                // Taps in the same direction add up; changing side starts again.
+                                tapSeek = if ((tapSeek < 0) == (step < 0)) tapSeek + step else step
+                                player.seekTo((player.currentPosition + step).coerceAtLeast(0))
+                                hint = (if (tapSeek < 0) "−" else "+") + (kotlin.math.abs(tapSeek) / 1000) + " s"
+                                hintTick++
+                            }
+                        },
+                        onLongPress = {
+                            if (!item.live) {
+                                holding = true
+                                player.setPlaybackSpeed(2f)
+                                hint = "2×"
+                            }
+                        },
+                        onPress = {
+                            tryAwaitRelease()
+                            if (holding) {
+                                holding = false
+                                player.setPlaybackSpeed(speedNow)
+                                hint = null
+                            }
+                        },
+                    )
+                }
+                .pointerInput(item.key, item.live) {
+                    var mode = DRAG_NONE
+                    var totalX = 0f
+                    var totalY = 0f
+                    var startPosition = 0L
+                    var startVolume = 0
+                    var startBrightness = 0.5f
+                    var rightHalf = false
+                    val audio = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                    val window = (context as? Activity)?.window
+                    detectDragGestures(
+                        onDragStart = { start ->
+                            mode = DRAG_NONE
+                            totalX = 0f
+                            totalY = 0f
+                            rightHalf = start.x > size.width / 2
+                            startPosition = player.currentPosition
+                            startVolume = audio?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 0
+                            val current = window?.attributes?.screenBrightness ?: -1f
+                            startBrightness = if (current < 0f) 0.5f else current
+                        },
+                        onDrag = { change, amount ->
+                            change.consume()
+                            totalX += amount.x
+                            totalY += amount.y
+                            if (mode == DRAG_NONE) {
+                                mode = when {
+                                    kotlin.math.abs(totalX) > kotlin.math.abs(totalY) -> if (item.live) DRAG_NONE else DRAG_SEEK
+                                    rightHalf -> DRAG_VOLUME
+                                    else -> DRAG_BRIGHTNESS
+                                }
+                            }
+                            when (mode) {
+                                DRAG_SEEK -> {
+                                    // The full width of the screen covers two minutes.
+                                    val delta = (totalX / size.width * 120_000f).toLong()
+                                    val target = (startPosition + delta).coerceIn(0, durationNow.coerceAtLeast(0))
+                                    val sign = if (delta < 0) "−" else "+"
+                                    hint = formatDuration(target) + "  " + sign + formatDuration(kotlin.math.abs(delta))
+                                }
+                                DRAG_VOLUME -> {
+                                    if (audio != null) {
+                                        val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+                                        val level = (startVolume - totalY / size.height * max * 1.5f).roundToInt().coerceIn(0, max)
+                                        audio.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0)
+                                        hint = "Volume ${level * 100 / max} %"
+                                    }
+                                }
+                                DRAG_BRIGHTNESS -> {
+                                    if (window != null) {
+                                        val level = (startBrightness - totalY / size.height * 1.5f).coerceIn(0.02f, 1f)
+                                        val attributes = window.attributes
+                                        attributes.screenBrightness = level
+                                        window.attributes = attributes
+                                        hint = "Luminosité ${(level * 100).roundToInt()} %"
+                                    }
+                                }
+                                else -> {}
+                            }
+                        },
+                        onDragEnd = {
+                            if (mode == DRAG_SEEK) {
+                                val delta = (totalX / size.width * 120_000f).toLong()
+                                player.seekTo((startPosition + delta).coerceIn(0, durationNow.coerceAtLeast(0)))
+                            }
+                            mode = DRAG_NONE
+                            hint = null
+                        },
+                        onDragCancel = {
+                            mode = DRAG_NONE
+                            hint = null
+                        },
+                    )
+                }
         )
 
         if (buffering && error == null && !pendingNext) {
-            CircularProgressIndicator(color = ArkaRed, modifier = Modifier.align(Alignment.Center))
+            CircularProgressIndicator(color = ArkaColors.Red, modifier = Modifier.align(Alignment.Center))
         }
 
         if (overlay) {
             Box(
                 Modifier.fillMaxSize().background(
                     Brush.verticalGradient(
-                        listOf(Color.Black.copy(alpha = 0.75f), Color.Transparent, Color.Black.copy(alpha = 0.85f))
+                        0f to Color.Black.copy(alpha = 0.75f),
+                        0.3f to Color.Transparent,
+                        0.6f to Color.Transparent,
+                        1f to Color.Black.copy(alpha = 0.85f),
                     )
                 )
             )
 
+            // Top: back, title, and the few actions that are always needed.
             Row(
-                Modifier.align(Alignment.TopStart).fillMaxWidth().padding(8.dp),
+                Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = if (tv) ArkaSize.tvOverscan else ArkaSpacing.md, vertical = ArkaSpacing.md),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Color.White)
+                if (!tv) {
+                    Box(
+                        Modifier.size(ArkaSize.touchMin).clip(CircleShape).clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center,
+                    ) { ArkaIcon(R.drawable.ic_arka_retour, "Retour") }
                 }
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        item.title,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    val programs = if (item.live) Repo.programs(item.epgId) else emptyList()
-                    val current = programs.firstOrNull { it.start <= now && now < it.end }
-                    if (current != null) {
+                Column(Modifier.weight(1f).padding(horizontal = ArkaSpacing.sm)) {
+                    if (item.live) {
                         Text(
-                            formatClock(current.start) + " – " + formatClock(current.end) + " · " + current.title,
+                            "● EN DIRECT",
                             color = Color.White,
-                            fontSize = 13.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            style = ArkaTheme.type.mono,
+                            modifier = Modifier.clip(RoundedCornerShape(ArkaRadius.xs)).background(ArkaColors.Red).padding(horizontal = 6.dp, vertical = 2.dp),
                         )
-                        val span = (current.end - current.start).coerceAtLeast(1)
-                        LinearProgressIndicator(
-                            progress = { ((now - current.start).toFloat() / span).coerceIn(0f, 1f) },
-                            color = ArkaRed,
-                            trackColor = Color.White.copy(alpha = 0.25f),
-                            modifier = Modifier.padding(vertical = 4.dp).widthIn(max = 320.dp).fillMaxWidth().height(2.dp),
-                        )
-                        val following = programs.firstOrNull { it.start >= current.end }
-                        if (following != null) {
-                            Text(
-                                "Ensuite : " + formatClock(following.start) + " · " + following.title,
-                                color = ArkaMuted,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    } else if (item.subtitle.isNotBlank()) {
-                        Text(item.subtitle, color = ArkaMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Text(item.title, color = Color.White, style = ArkaTheme.type.heading, fontWeight = FontWeight(700), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (!item.live && item.subtitle.isNotBlank()) {
+                        Text(item.subtitle, color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, fontWeight = FontWeight(500), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
-                if (item.live) {
-                    Text(
-                        "EN DIRECT",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(end = 12.dp).background(ArkaRed).padding(horizontal = 8.dp, vertical = 3.dp),
-                    )
+                if (!tv) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
+                        if (item.live && hasQueue) PlayerPill("Chaînes") { panel = PANEL_QUEUE }
+                        PlayerPill("Audio · ST") { panel = PANEL_TRACKS }
+                        PlayerPill("⋯") { panel = PANEL_SETTINGS }
+                    }
                 }
             }
 
-            if (error == null && !pendingNext) {
+            // Centre (handsets): −10, play / pause, +10.
+            if (!tv && error == null && !pendingNext) {
                 Row(
                     Modifier.align(Alignment.Center),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.x3),
                 ) {
-                    if (hasQueue) {
-                        ControlButton(Icons.Filled.SkipPrevious, "Précédent") {
-                            activity++
-                            onPrevious()
-                        }
-                    }
                     if (!item.live) {
-                        ControlButton(Icons.Filled.Replay10, "Reculer de 10 secondes") {
+                        RoundControl(R.drawable.ic_arka_reculer_10, "Reculer de 10 secondes") {
                             activity++
                             player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
                         }
                     }
-                    ControlButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Lecture / pause", large = true) {
-                        activity++
-                        player.playWhenReady = !player.playWhenReady
+                    Box(
+                        Modifier.size(72.dp).clip(CircleShape).background(ArkaColors.TextPrimary).clickable {
+                            activity++
+                            player.playWhenReady = !player.playWhenReady
+                        },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        ArkaIcon(
+                            if (playing) R.drawable.ic_arka_pause else R.drawable.ic_arka_lire,
+                            if (playing) "Pause" else "Lecture",
+                            tint = ArkaColors.Background,
+                            size = 32.dp,
+                        )
                     }
                     if (!item.live) {
-                        ControlButton(Icons.Filled.Forward10, "Avancer de 10 secondes") {
+                        RoundControl(R.drawable.ic_arka_avancer_10, "Avancer de 10 secondes") {
                             activity++
                             player.seekTo(player.currentPosition + 10_000)
                         }
                     }
-                    if (hasQueue) {
-                        ControlButton(Icons.Filled.SkipNext, "Suivant") {
-                            activity++
-                            onNext()
-                        }
-                    }
                 }
             }
 
-            Column(Modifier.align(Alignment.BottomStart).fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                if (!item.live && duration > 0) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        val fraction = drag ?: (position.toFloat() / duration).coerceIn(0f, 1f)
-                        Text(formatDuration((fraction * duration).toLong()), color = Color.White, fontSize = 12.sp)
-                        Slider(
-                            value = fraction,
-                            onValueChange = {
-                                drag = it
-                                activity++
-                            },
-                            onValueChangeFinished = {
-                                drag?.let { player.seekTo((it * duration).toLong()) }
-                                drag = null
-                            },
-                            colors = SliderDefaults.colors(
-                                thumbColor = ArkaRed,
-                                activeTrackColor = ArkaRed,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.3f),
-                            ),
-                            modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
-                        )
-                        Text(formatDuration(duration), color = Color.White, fontSize = 12.sp)
-                    }
-                }
-                Row(
-                    Modifier.horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    if (item.live && hasLastChannel) {
-                        OptionButton(Icons.Filled.SwapHoriz, "Chaîne précédente") {
-                            activity++
-                            onLastChannel()
+            // Bottom: timeline for films and episodes, programme for live channels.
+            Column(
+                Modifier.align(Alignment.BottomStart).fillMaxWidth()
+                    .padding(horizontal = if (tv) ArkaSize.tvOverscan else ArkaSpacing.lg, vertical = if (tv) ArkaSpacing.xl else ArkaSpacing.sm),
+            ) {
+                if (item.live) {
+                    val programs = Repo.programs(item.epgId)
+                    val current = programs.firstOrNull { it.start <= now && now < it.end }
+                    if (current != null) {
+                        Text(current.title, color = Color.White, style = ArkaTheme.type.title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = ArkaSpacing.sm)) {
+                            Text(formatClock(current.start), color = ArkaColors.TextTertiary, style = ArkaTheme.type.mono)
+                            val span = (current.end - current.start).coerceAtLeast(1)
+                            LinearProgressIndicator(
+                                progress = { ((now - current.start).toFloat() / span).coerceIn(0f, 1f) },
+                                color = ArkaColors.Red,
+                                trackColor = Color.White.copy(alpha = 0.25f),
+                                modifier = Modifier.weight(1f).padding(horizontal = ArkaSpacing.md).height(3.dp),
+                            )
+                            Text(formatClock(current.end), color = ArkaColors.TextTertiary, style = ArkaTheme.type.mono)
+                        }
+                        val following = programs.firstOrNull { it.start >= current.end }
+                        if (following != null) {
+                            Text(
+                                "Ensuite · " + formatClock(following.start) + " " + following.title,
+                                color = ArkaColors.TextSecondary,
+                                style = ArkaTheme.type.label,
+                                fontWeight = FontWeight(500),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = ArkaSpacing.xs),
+                            )
                         }
                     }
-                    if (hasQueue) {
-                        OptionButton(Icons.Filled.FormatListBulleted, if (item.live) "Chaînes" else "Épisodes") { showQueue = true }
+                } else if (duration > 0) {
+                    val fraction = drag ?: (position.toFloat() / duration).coerceIn(0f, 1f)
+                    Slider(
+                        value = fraction,
+                        onValueChange = {
+                            drag = it
+                            activity++
+                        },
+                        onValueChangeFinished = {
+                            drag?.let { player.seekTo((it * duration).toLong()) }
+                            drag = null
+                        },
+                        colors = SliderDefaults.colors(
+                            thumbColor = ArkaColors.TextPrimary,
+                            activeTrackColor = ArkaColors.Red,
+                            inactiveTrackColor = Color.White.copy(alpha = 0.3f),
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = ArkaSpacing.xs)) {
+                    if (!item.live && duration > 0) {
+                        val fraction = drag ?: (position.toFloat() / duration).coerceIn(0f, 1f)
+                        Text(formatDuration((fraction * duration).toLong()), color = Color.White, style = ArkaTheme.type.mono)
+                        Text("  / " + formatDuration(duration), color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono)
                     }
-                    OptionButton(Icons.Filled.Subtitles, "Audio, sous-titres, qualité") { showTracks = true }
-                    if (!item.live) {
-                        OptionButton(Icons.Filled.Speed, "Vitesse : " + speedLabel(speed)) { showSpeed = true }
+                    if (tv) {
+                        Spacer(Modifier.width(ArkaSpacing.xl))
+                        Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                            if (hasQueue) PlayerPill(if (item.live) "‹ Chaîne" else "‹ Précédent") { activity++; onPrevious() }
+                            if (!item.live) PlayerPill("−10") { activity++; player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0)) }
+                            PlayerPill(if (playing) "Pause" else "Lecture", Modifier.focusRequester(playFocus), light = true) {
+                                activity++
+                                player.playWhenReady = !player.playWhenReady
+                            }
+                            if (!item.live) PlayerPill("+10") { activity++; player.seekTo(player.currentPosition + 10_000) }
+                            if (hasQueue) PlayerPill(if (item.live) "Chaîne ›" else "Suivant ›") { activity++; onNext() }
+                        }
                     }
-                    OptionButton(Icons.Filled.AspectRatio, if (zoom) "Plein cadre" else "Format d'origine") {
-                        zoom = !zoom
-                        activity++
+                    Spacer(Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm), verticalAlignment = Alignment.CenterVertically) {
+                        if (item.live && hasLastChannel) PlayerPill("Chaîne précédente") { activity++; onLastChannel() }
+                        if (!item.live && hasQueue) PlayerPill("Épisodes") { panel = PANEL_QUEUE }
+                        if (!tv && !item.live && nextItem != null) PlayerPill("Suivant ›") { activity++; onNext() }
+                        if (!tv) PlayerPill(if (zoom) "⤢ Remplir" else "⤢ Format") { zoom = !zoom; activity++ }
+                        if (tv) {
+                            if (item.live && hasQueue) PlayerPill("Chaînes") { panel = PANEL_QUEUE }
+                            PlayerPill("Audio · ST") { panel = PANEL_TRACKS }
+                            PlayerPill("Réglages") { panel = PANEL_SETTINGS }
+                        }
                     }
-                    OptionButton(Icons.Filled.Info, if (showStats) "Masquer les infos" else "Infos techniques") {
-                        showStats = !showStats
-                        activity++
-                    }
-                    OptionButton(Icons.Filled.PictureInPictureAlt, "Mini-lecteur", onPip)
                 }
             }
         }
 
+        if (hint != null && !inPip) {
+            Text(
+                hint.orEmpty(),
+                color = Color.White,
+                style = ArkaTheme.type.heading,
+                modifier = Modifier.align(Alignment.TopCenter).padding(top = 64.dp)
+                    .clip(RoundedCornerShape(ArkaRadius.pill)).background(Color.Black.copy(alpha = 0.7f))
+                    .padding(horizontal = ArkaSpacing.lg, vertical = ArkaSpacing.sm),
+            )
+        }
+
         if (showStats && !inPip) {
             Column(
-                Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp)
-                    .clip(RoundedCornerShape(ArkaRadius.md)).background(Color.Black.copy(alpha = 0.7f)).padding(10.dp),
+                Modifier.align(Alignment.TopEnd).padding(top = 72.dp, end = ArkaSpacing.md)
+                    .clip(RoundedCornerShape(ArkaRadius.md)).background(Color.Black.copy(alpha = 0.75f)).padding(ArkaSpacing.md),
             ) {
+                Text("Diagnostics", color = Color.White, style = ArkaTheme.type.label, modifier = Modifier.padding(bottom = 4.dp))
                 stats.forEach { (label, value) ->
                     Row {
-                        Text(label, color = ArkaMuted, fontSize = 11.sp, modifier = Modifier.width(96.dp))
-                        Text(value, color = Color.White, fontSize = 11.sp)
+                        Text(label, color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, modifier = Modifier.width(110.dp))
+                        Text(value, color = Color.White, style = ArkaTheme.type.mono)
                     }
                 }
             }
@@ -724,27 +928,17 @@ private fun PlayerScreen(
 
         if (error != null && !inPip) {
             Column(
-                Modifier.align(Alignment.Center).widthIn(max = 420.dp)
-                    .clip(RoundedCornerShape(ArkaRadius.lg)).background(Color.Black.copy(alpha = 0.8f)).padding(20.dp),
+                Modifier.align(Alignment.Center).widthIn(max = 440.dp)
+                    .clip(RoundedCornerShape(ArkaRadius.lg)).background(ArkaColors.BackgroundAlt.copy(alpha = 0.95f)).padding(ArkaSpacing.xl),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(error.substringBefore('\n'), color = Color.White, textAlign = TextAlign.Center)
-                Text(error.substringAfter('\n', ""), color = ArkaMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
-                Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = onRetry,
-                        colors = ButtonDefaults.buttonColors(containerColor = ArkaRed, contentColor = Color.White),
-                    ) { Text("Réessayer") }
-                    if (item.live && hasQueue) {
-                        Button(
-                            onClick = onNext,
-                            colors = ButtonDefaults.buttonColors(containerColor = ArkaCard, contentColor = Color.White),
-                        ) { Text("Chaîne suivante") }
-                    }
-                    Button(
-                        onClick = onBack,
-                        colors = ButtonDefaults.buttonColors(containerColor = ArkaCard, contentColor = Color.White),
-                    ) { Text("Fermer") }
+                ArkaIcon(R.drawable.ic_arka_alerte, null, tint = ArkaColors.Warning, size = 28.dp)
+                Text(error.substringBefore('\n'), color = Color.White, style = ArkaTheme.type.body, textAlign = TextAlign.Center, modifier = Modifier.padding(top = ArkaSpacing.sm))
+                Text(error.substringAfter('\n', ""), color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, modifier = Modifier.padding(top = 4.dp))
+                Row(Modifier.padding(top = ArkaSpacing.lg), horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
+                    PrimaryButton("Réessayer", onRetry)
+                    if (item.live && hasQueue) SecondaryButton("Chaîne suivante", onNext)
+                    SecondaryButton("Fermer", onBack)
                 }
             }
         }
@@ -758,140 +952,227 @@ private fun PlayerScreen(
                 }
                 onNext()
             }
-            Column(
-                Modifier.align(Alignment.BottomEnd).padding(24.dp).widthIn(max = 360.dp)
-                    .clip(RoundedCornerShape(ArkaRadius.lg)).background(Color.Black.copy(alpha = 0.85f)).padding(16.dp),
+            Row(
+                Modifier.align(Alignment.BottomEnd).padding(ArkaSpacing.xl).widthIn(max = 420.dp)
+                    .clip(RoundedCornerShape(ArkaRadius.md)).background(ArkaColors.BackgroundAlt.copy(alpha = 0.95f)).padding(ArkaSpacing.md),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Épisode suivant dans $remaining s", color = Color.White, fontWeight = FontWeight.Bold)
-                if (nextItem.subtitle.isNotBlank()) {
-                    Text(nextItem.subtitle, color = ArkaMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Box(Modifier.width(110.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(ArkaRadius.sm)).background(ArkaColors.Surface)) {
+                    if (nextItem.poster.isNotBlank()) ArkaImage(nextItem.poster, Modifier.fillMaxSize())
                 }
-                Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = onNext,
-                        colors = ButtonDefaults.buttonColors(containerColor = ArkaRed, contentColor = Color.White),
-                    ) { Text("Lire maintenant") }
-                    Button(
-                        onClick = onCancelNext,
-                        colors = ButtonDefaults.buttonColors(containerColor = ArkaCard, contentColor = Color.White),
-                    ) { Text("Annuler") }
+                Column(Modifier.padding(start = ArkaSpacing.md)) {
+                    Text("Épisode suivant", color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono)
+                    Text(
+                        nextItem.subtitle.ifBlank { nextItem.title },
+                        color = Color.White,
+                        style = ArkaTheme.type.label,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Row(Modifier.padding(top = ArkaSpacing.sm), horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
+                        PrimaryButton("Lire dans $remaining s", onNext)
+                        SecondaryButton("Annuler", onCancelNext)
+                    }
                 }
             }
         }
-    }
 
-    if (showTracks) {
-        val audio = trackOptions(player, C.TRACK_TYPE_AUDIO)
-        val subtitles = trackOptions(player, C.TRACK_TYPE_TEXT)
-        val qualities = videoOptions(player)
-        val automatic = automaticQuality(player)
-        AlertDialog(
-            onDismissRequest = { showTracks = false },
-            containerColor = ArkaSurface,
-            title = { Text("Audio, sous-titres, qualité") },
-            text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    Text("Audio", color = ArkaMuted, fontSize = 12.sp)
-                    if (audio.isEmpty()) Text("Aucune piste disponible", fontSize = 14.sp)
-                    audio.forEach { option ->
-                        ChoiceLine(option.label, option.selected) {
-                            selectTrack(player, C.TRACK_TYPE_AUDIO, option)
-                            showTracks = false
+        // ----- Panels
+
+        if (panel != PANEL_NONE && !inPip) {
+            // Touching outside a panel closes it.
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f)).clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                ) { panel = PANEL_NONE }
+            )
+        }
+
+        if (panel == PANEL_TRACKS && !inPip) {
+            val audio = trackOptions(player, C.TRACK_TYPE_AUDIO)
+            val subtitles = trackOptions(player, C.TRACK_TYPE_TEXT)
+            SidePanel(Modifier.align(Alignment.CenterEnd), widthFraction = 0.5f) {
+                Row(Modifier.fillMaxWidth().weight(1f)) {
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        Text("Audio", color = Color.White, style = ArkaTheme.type.label, modifier = Modifier.padding(bottom = ArkaSpacing.sm))
+                        if (audio.isEmpty()) Text("Aucune piste", color = ArkaColors.TextSecondary, style = ArkaTheme.type.body)
+                        audio.forEach { option ->
+                            SheetOption(option.label, option.selected, onClick = {
+                                selectTrack(player, C.TRACK_TYPE_AUDIO, option)
+                                panel = PANEL_NONE
+                            })
                         }
                     }
-                    Text("Sous-titres", color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
-                    ChoiceLine("Désactivés", subtitles.none { it.selected }) {
-                        selectTrack(player, C.TRACK_TYPE_TEXT, null)
-                        showTracks = false
+                    Spacer(Modifier.width(ArkaSpacing.lg))
+                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                        Text("Sous-titres", color = Color.White, style = ArkaTheme.type.label, modifier = Modifier.padding(bottom = ArkaSpacing.sm))
+                        SheetOption("Désactivés", subtitles.none { it.selected }, onClick = {
+                            selectTrack(player, C.TRACK_TYPE_TEXT, null)
+                            panel = PANEL_NONE
+                        })
+                        subtitles.forEach { option ->
+                            SheetOption(option.label, option.selected, onClick = {
+                                selectTrack(player, C.TRACK_TYPE_TEXT, option)
+                                panel = PANEL_NONE
+                            })
+                        }
                     }
-                    subtitles.forEach { option ->
-                        ChoiceLine(option.label, option.selected) {
-                            selectTrack(player, C.TRACK_TYPE_TEXT, option)
-                            showTracks = false
+                }
+                Row(Modifier.fillMaxWidth().padding(top = ArkaSpacing.md), horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
+                    val automatic = automaticQuality(player)
+                    SecondaryButton("Qualité : " + if (automatic) "Auto" else "Manuelle", { panel = PANEL_SETTINGS }, Modifier.weight(1f))
+                    if (!item.live) {
+                        SecondaryButton("Vitesse : " + speedLabel(speed), { panel = PANEL_SETTINGS }, Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        if (panel == PANEL_SETTINGS && !inPip) {
+            val qualities = videoOptions(player)
+            val automatic = automaticQuality(player)
+            SidePanel(Modifier.align(Alignment.CenterEnd), widthFraction = 0.42f) {
+                Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState())) {
+                    if (!item.live) {
+                        Text("Vitesse", color = Color.White, style = ArkaTheme.type.label)
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()).padding(vertical = ArkaSpacing.sm),
+                            horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm),
+                        ) {
+                            speeds.forEach { value -> ArkaChip(speedLabel(value), value == speed) { speed = value } }
                         }
                     }
                     // Only offered when the stream really carries several video qualities.
                     if (qualities.size > 1) {
-                        Text("Qualité", color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
-                        ChoiceLine("Automatique", automatic) {
-                            clearVideoOverride(player)
-                            showTracks = false
-                        }
+                        Text("Qualité", color = Color.White, style = ArkaTheme.type.label, modifier = Modifier.padding(top = ArkaSpacing.sm))
+                        SheetOption("Automatique", automatic, onClick = { clearVideoOverride(player) })
                         qualities.forEach { option ->
-                            ChoiceLine(option.label, !automatic && option.selected) {
-                                selectTrack(player, C.TRACK_TYPE_VIDEO, option)
-                                showTracks = false
+                            SheetOption(option.label, !automatic && option.selected, onClick = { selectTrack(player, C.TRACK_TYPE_VIDEO, option) })
+                        }
+                    }
+                    Text("Affichage", color = Color.White, style = ArkaTheme.type.label, modifier = Modifier.padding(top = ArkaSpacing.sm))
+                    SheetOption("Remplir l'écran", zoom, onClick = { zoom = !zoom })
+                    SheetOption("Diagnostics", showStats, onClick = { showStats = !showStats })
+                    SheetOption("Mini-lecteur", false, onClick = {
+                        panel = PANEL_NONE
+                        onPip()
+                    })
+                }
+            }
+        }
+
+        if (panel == PANEL_QUEUE && !inPip) {
+            if (item.live) {
+                // Quick zapping: the list of the group being watched, on the left.
+                SidePanel(Modifier.align(Alignment.CenterStart), widthFraction = 0.36f) {
+                    Text("CHAÎNES", color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, modifier = Modifier.padding(bottom = ArkaSpacing.sm))
+                    LazyColumn(state = rememberLazyListState(initialFirstVisibleItemIndex = index)) {
+                        itemsIndexed(queue) { place, entry ->
+                            val onAir = Repo.nowPlaying(entry.epgId, now)?.title
+                            SheetOption(entry.title + if (onAir != null) " · $onAir" else "", place == index, onClick = {
+                                panel = PANEL_NONE
+                                if (place != index) onSelect(place)
+                            })
+                        }
+                    }
+                }
+            } else {
+                // Episode selector: thumbnails along the bottom, the one playing is marked.
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth().background(ArkaColors.BackgroundAlt.copy(alpha = 0.97f))
+                        .padding(vertical = ArkaSpacing.lg),
+                ) {
+                    Text(
+                        item.title,
+                        color = Color.White,
+                        style = ArkaTheme.type.label,
+                        modifier = Modifier.padding(horizontal = ArkaSpacing.xl, vertical = ArkaSpacing.xs),
+                    )
+                    LazyRow(
+                        state = rememberLazyListState(initialFirstVisibleItemIndex = index),
+                        contentPadding = PaddingValues(horizontal = ArkaSpacing.xl, vertical = ArkaSpacing.sm),
+                        horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.md),
+                    ) {
+                        itemsIndexed(queue) { place, entry ->
+                            Column(Modifier.width(170.dp)) {
+                                Box(
+                                    Modifier.fillMaxWidth().aspectRatio(16f / 9f)
+                                        .focusHighlight()
+                                        .clip(RoundedCornerShape(ArkaRadius.sm))
+                                        .background(ArkaColors.Surface)
+                                        .clickable {
+                                            panel = PANEL_NONE
+                                            if (place != index) onSelect(place)
+                                        },
+                                ) {
+                                    if (entry.poster.isNotBlank()) ArkaImage(entry.poster, Modifier.fillMaxSize())
+                                    when {
+                                        place == index -> Text(
+                                            "EN COURS",
+                                            color = Color.White,
+                                            style = ArkaTheme.type.mono,
+                                            modifier = Modifier.padding(6.dp).clip(RoundedCornerShape(ArkaRadius.xs))
+                                                .background(ArkaColors.Red).padding(horizontal = 5.dp, vertical = 1.dp),
+                                        )
+                                        entry.key in Repo.watched -> ArkaBadge("VU", Modifier.padding(6.dp))
+                                        else -> {}
+                                    }
+                                }
+                                Text(
+                                    entry.subtitle.ifBlank { entry.title },
+                                    color = if (place == index) Color.White else ArkaColors.TextSecondary,
+                                    style = ArkaTheme.type.label,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
                             }
                         }
                     }
                 }
-            },
-            confirmButton = { TextButton(onClick = { showTracks = false }) { Text("Fermer") } },
-        )
-    }
-
-    if (showQueue) {
-        AlertDialog(
-            onDismissRequest = { showQueue = false },
-            containerColor = ArkaSurface,
-            title = { Text(if (item.live) "Chaînes" else "Épisodes") },
-            text = {
-                LazyColumn(state = rememberLazyListState(initialFirstVisibleItemIndex = index)) {
-                    itemsIndexed(queue) { position, entry ->
-                        val label = if (entry.live) entry.title else entry.subtitle.ifBlank { entry.title }
-                        ChoiceLine(label, position == index) {
-                            showQueue = false
-                            if (position != index) onSelect(position)
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showQueue = false }) { Text("Fermer") } },
-        )
-    }
-
-    if (showSpeed) {
-        AlertDialog(
-            onDismissRequest = { showSpeed = false },
-            containerColor = ArkaSurface,
-            title = { Text("Vitesse de lecture") },
-            text = {
-                Column {
-                    speeds.forEach { value ->
-                        ChoiceLine(speedLabel(value), value == speed) {
-                            speed = value
-                            showSpeed = false
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showSpeed = false }) { Text("Fermer") } },
-        )
+            }
+        }
     }
 }
 
+/** A small translucent action of the player bar. [light] marks the one that holds the initial focus on TV. */
 @Composable
-private fun ChoiceLine(label: String, selected: Boolean, onClick: () -> Unit) {
-    Text(
-        (if (selected) "● " else "○ ") + label,
-        color = if (selected) ArkaRed else Color.White,
-        fontSize = 15.sp,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+private fun PlayerPill(text: String, modifier: Modifier = Modifier, light: Boolean = false, onClick: () -> Unit) {
+    Box(
+        modifier
+            .defaultMinSize(minHeight = if (LocalIsTv.current) ArkaSize.tvControlMin else 36.dp)
+            .focusHighlight(ArkaRadius.md, ArkaMotion.FOCUS_SCALE_BUTTON)
+            .clip(RoundedCornerShape(ArkaRadius.md))
+            .background(if (light) ArkaColors.TextPrimary else ArkaColors.SurfaceHigh.copy(alpha = 0.85f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = ArkaSpacing.md, vertical = 6.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = if (light) ArkaColors.Background else Color.White, style = ArkaTheme.type.label, maxLines = 1)
+    }
+}
+
+/** Outlined round control around the main play / pause button (handsets). */
+@Composable
+private fun RoundControl(icon: Int, description: String, onClick: () -> Unit) {
+    Box(
+        Modifier.size(52.dp).clip(CircleShape).border(1.5.dp, Color.White.copy(alpha = 0.7f), CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        ArkaIcon(icon, description, tint = Color.White, size = 24.dp)
+    }
+}
+
+/** A panel that slides over one side of the picture; the rest of the screen closes it. */
+@Composable
+private fun SidePanel(modifier: Modifier, widthFraction: Float, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier.fillMaxHeight().fillMaxWidth(widthFraction)
+            .background(ArkaColors.BackgroundAlt.copy(alpha = 0.97f))
+            // Swallow touches so that they do not reach the scrim underneath.
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
+            .padding(ArkaSpacing.xl),
+        content = content,
     )
-}
-
-@Composable
-private fun OptionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
-    TextButton(onClick = onClick) {
-        Icon(icon, contentDescription = null, tint = Color.White)
-        Spacer(Modifier.width(6.dp))
-        Text(label, color = Color.White, fontSize = 13.sp, maxLines = 1)
-    }
-}
-
-@Composable
-private fun ControlButton(icon: ImageVector, description: String, large: Boolean = false, onClick: () -> Unit) {
-    IconButton(onClick = onClick, modifier = Modifier.size(if (large) 72.dp else 52.dp)) {
-        Icon(icon, contentDescription = description, tint = Color.White, modifier = Modifier.size(if (large) 56.dp else 36.dp))
-    }
 }

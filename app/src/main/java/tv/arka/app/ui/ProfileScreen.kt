@@ -2,6 +2,9 @@
 
 package tv.arka.app.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -62,6 +65,170 @@ import tv.arka.app.data.Vod
 import tv.arka.app.data.XtreamApi
 import java.util.UUID
 
+private class MenuEntry(val label: String, val detail: String, val action: () -> Unit)
+
+private const val SECTION_MENU = 0
+private const val SECTION_SOURCES = 1
+private const val SECTION_HISTORY = 2
+private const val SECTION_SETTINGS = 3
+
+/** Mon espace entry screen: the profile, followed series, then the sections. TV shows tiles instead of a list. */
+@Composable
+private fun ProfileMenu(
+    onOpen: (Vod) -> Unit,
+    onList: (String, List<Vod>) -> Unit,
+    onProfiles: () -> Unit,
+    onSection: (Int) -> Unit,
+) {
+    val tv = LocalIsTv.current
+    val margin = ArkaTheme.margin
+    val profile = Repo.activeProfile
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = margin, vertical = ArkaSpacing.lg),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ProfileAvatar(profile, size = if (tv) 44.dp else 56.dp)
+        Column(Modifier.weight(1f).padding(horizontal = ArkaSpacing.md)) {
+            Text(
+                if (tv) profile.name.uppercase() else profile.name,
+                fontFamily = if (tv) ArkaDisplayFont else ArkaFont,
+                style = ArkaTheme.type.title,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                (if (profile.isMain) "Profil principal" else "Profil") + " · ${Repo.sources.size} source" + if (Repo.sources.size > 1) "s" else "",
+                color = ArkaColors.TextSecondary,
+                style = ArkaTheme.type.label,
+                fontWeight = FontWeight(500),
+            )
+        }
+        SecondaryButton("Changer de profil", onProfiles)
+    }
+
+    val entries = listOf(
+        MenuEntry("Ma liste", if (Repo.myList.isEmpty()) "vide" else "${Repo.myList.size} titres") { onList("Ma liste", Repo.myList) },
+        MenuEntry("Séries suivies", if (Repo.followed.isEmpty()) "aucune" else "${Repo.followed.size} séries") {
+            onList("Séries suivies", Repo.followed)
+        },
+        MenuEntry("Historique", if (Repo.progress.isEmpty()) "vide" else "${Repo.progress.size} en cours") { onSection(SECTION_HISTORY) },
+        MenuEntry("Sources", Repo.sources.size.toString()) { onSection(SECTION_SOURCES) },
+        MenuEntry("Paramètres", "") { onSection(SECTION_SETTINGS) },
+    )
+
+    if (tv) {
+        entries.chunked(4).forEach { row ->
+            Row(
+                Modifier.padding(horizontal = margin, vertical = ArkaSpacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.md),
+            ) {
+                row.forEach { entry ->
+                    val label = entry.label
+                    val detail = entry.detail
+                    val action = entry.action
+                    Column(
+                        Modifier.width(180.dp).height(84.dp)
+                            .focusHighlight(ArkaRadius.md, ArkaMotion.FOCUS_SCALE_BUTTON)
+                            .clip(RoundedCornerShape(ArkaRadius.md))
+                            .background(ArkaColors.Surface)
+                            .clickable(onClick = action)
+                            .padding(ArkaSpacing.md),
+                        verticalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(label, style = ArkaTheme.type.heading, fontWeight = FontWeight(700))
+                        Text(detail, color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono)
+                    }
+                }
+            }
+        }
+    } else {
+        if (Repo.followed.isNotEmpty()) {
+            Text(
+                "Séries suivies",
+                style = ArkaTheme.type.heading,
+                fontWeight = FontWeight(700),
+                modifier = Modifier.padding(horizontal = margin, vertical = ArkaSpacing.sm),
+            )
+            Repo.followed.take(3).forEach { series ->
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = margin, vertical = 4.dp)
+                        .clip(RoundedCornerShape(ArkaRadius.md))
+                        .background(ArkaColors.Surface)
+                        .clickable { onOpen(series) }
+                        .padding(ArkaSpacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.width(72.dp).height(42.dp).clip(RoundedCornerShape(ArkaRadius.sm)).background(ArkaColors.SurfaceHigh)) {
+                        if (series.poster.isNotBlank()) ArkaImage(series.poster, Modifier.fillMaxSize())
+                    }
+                    Text(
+                        series.name,
+                        style = ArkaTheme.type.label,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = ArkaSpacing.md),
+                    )
+                }
+            }
+        }
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = margin, vertical = ArkaSpacing.lg)
+                .clip(RoundedCornerShape(ArkaRadius.md)).background(ArkaColors.Surface),
+        ) {
+            entries.forEach { entry ->
+                val label = entry.label
+                val detail = entry.detail
+                val action = entry.action
+                Row(
+                    Modifier.fillMaxWidth().height(52.dp).clickable(onClick = action).padding(horizontal = ArkaSpacing.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(label, style = ArkaTheme.type.label, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                    Text("$detail ›".trim(), color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, fontWeight = FontWeight(500))
+                }
+            }
+        }
+    }
+}
+
+/** What the profile was watching: resume from here, or clear the list. */
+@Composable
+private fun HistorySection() {
+    val context = LocalContext.current
+    val margin = ArkaTheme.margin
+    if (Repo.progress.isEmpty()) {
+        Text("Rien en cours de lecture.", color = ArkaColors.TextSecondary, modifier = Modifier.padding(margin))
+        return
+    }
+    Repo.progress.forEach { entry ->
+        Row(
+            Modifier.fillMaxWidth()
+                .focusHighlight(ArkaRadius.sm, 1f)
+                .clickable { play(context, listOf(entry.item), 0) }
+                .padding(horizontal = margin, vertical = ArkaSpacing.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(ArkaRadius.sm)).background(ArkaColors.Surface)) {
+                if (entry.item.poster.isNotBlank()) ArkaImage(entry.item.poster, Modifier.fillMaxSize())
+            }
+            Column(Modifier.weight(1f).padding(start = ArkaSpacing.md)) {
+                Text(entry.item.title, style = ArkaTheme.type.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val left = ((entry.duration - entry.position) / 60_000).coerceAtLeast(1)
+                Text(
+                    listOfNotNull(entry.item.subtitle.takeIf { it.isNotBlank() }, "reste $left min").joinToString(" · "),
+                    color = ArkaColors.TextSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+    Box(Modifier.padding(margin)) {
+        SecondaryButton("Effacer l'historique", { Repo.clearProgress() })
+    }
+}
+
 @Composable
 fun ProfileScreen(
     onAddSource: () -> Unit,
@@ -73,32 +240,28 @@ fun ProfileScreen(
     var toDelete by remember { mutableStateOf<Source?>(null) }
     var refreshHours by remember { mutableIntStateOf(Store.catalogRefreshHours) }
     var toEdit by remember { mutableStateOf<Source?>(null) }
+    var section by rememberSaveable { mutableIntStateOf(SECTION_MENU) }
+    BackHandler(enabled = section != SECTION_MENU) { section = SECTION_MENU }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
-        Text(
-            "Mon espace",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Black,
-            modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
-        )
-
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ProfileAvatar(Repo.activeProfile, size = 48.dp)
-            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                Text(Repo.activeProfile.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(
-                    (if (Repo.activeProfile.isMain) "Profil principal" else "Profil") + " · ${Repo.sources.size} source(s)",
-                    color = ArkaMuted,
-                    fontSize = 12.sp,
-                )
-            }
-            SecondaryButton("Changer de profil", onProfiles)
+        if (section == SECTION_MENU) {
+            ProfileMenu(onOpen, onList, onProfiles) { section = it }
+        } else {
+            ScreenHeader(
+                when (section) {
+                    SECTION_SOURCES -> "Sources"
+                    SECTION_HISTORY -> "Historique"
+                    else -> "Paramètres"
+                },
+                onBack = { section = SECTION_MENU },
+            )
         }
 
-        SectionTitle("Sources")
+        if (section == SECTION_HISTORY) {
+            HistorySection()
+        }
+
+        if (section == SECTION_SOURCES) {
         Repo.sources.forEach { source ->
             val active = Repo.active?.id == source.id
             Row(
@@ -174,11 +337,9 @@ fun ProfileScreen(
             )
         }
 
-        if (Repo.myList.isNotEmpty()) {
-            VodRow("Ma liste", Repo.myList, onOpen) { onList("Ma liste", Repo.myList) }
         }
 
-        SectionTitle("Réglages")
+        if (section == SECTION_SETTINGS) {
         Text(
             "Format des chaînes en direct (Xtream)",
             fontSize = 14.sp,
@@ -235,6 +396,7 @@ fun ProfileScreen(
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 16.dp),
         )
+        }
     }
 
     toEdit?.let { source ->

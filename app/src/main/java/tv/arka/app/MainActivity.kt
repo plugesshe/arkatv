@@ -203,7 +203,7 @@ private fun MainShell(
             Destination.HOME -> HomeScreen(onOpen, onCatalog, onDiscover, onProfiles)
             Destination.LIVE -> LiveScreen()
             Destination.GUIDE -> GuideScreen()
-            Destination.SEARCH -> SearchScreen(onOpen = onOpen)
+            Destination.SEARCH -> SearchScreen(onOpen = onOpen, onCatalog = onCatalog)
             Destination.PROFILE -> ProfileScreen(onAddSource, onOpen, onList, onProfiles)
             Destination.MOVIES -> CatalogGridScreen("Films", VodKind.MOVIE, movies, onBack = goHome, onOpen = onOpen)
             Destination.SERIES -> CatalogGridScreen("Séries", VodKind.SERIES, series, onBack = goHome, onOpen = onOpen)

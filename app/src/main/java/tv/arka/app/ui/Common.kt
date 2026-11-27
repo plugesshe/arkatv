@@ -35,6 +35,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -174,7 +178,7 @@ fun vodMeta(vod: Vod): String {
  * Without an image, the title is set typographically on the surface colour.
  */
 @Composable
-fun Poster(vod: Vod, modifier: Modifier = Modifier, onClick: () -> Unit) {
+fun Poster(vod: Vod, modifier: Modifier = Modifier, highlight: String = "", onClick: () -> Unit) {
     Column(modifier) {
         Box(
             Modifier
@@ -202,7 +206,7 @@ fun Poster(vod: Vod, modifier: Modifier = Modifier, onClick: () -> Unit) {
             }
         }
         Text(
-            vod.name,
+            highlighted(vod.name, highlight),
             style = ArkaTheme.type.label,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -218,6 +222,25 @@ fun Poster(vod: Vod, modifier: Modifier = Modifier, onClick: () -> Unit) {
                 modifier = Modifier.padding(top = 2.dp),
             )
         }
+    }
+}
+
+/** Folds one character for matching: lower case, accent removed. Keeps positions one-to-one. */
+private fun fold(c: Char): Char {
+    val base = java.text.Normalizer.normalize(c.toString(), java.text.Normalizer.Form.NFD)
+    return base[0].lowercaseChar()
+}
+
+/** [text] with the first occurrence of [term] (ignoring case and accents) in the red reserved for text. */
+fun highlighted(text: String, term: String): AnnotatedString {
+    val needle = term.trim().map(::fold).joinToString("")
+    if (needle.length < 2) return AnnotatedString(text)
+    val at = text.map(::fold).joinToString("").indexOf(needle)
+    if (at < 0) return AnnotatedString(text)
+    return buildAnnotatedString {
+        append(text.substring(0, at))
+        withStyle(SpanStyle(color = ArkaColors.RedBright)) { append(text.substring(at, at + needle.length)) }
+        append(text.substring(at + needle.length))
     }
 }
 

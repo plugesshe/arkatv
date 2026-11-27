@@ -78,6 +78,15 @@
 - Guide TV : ligne rouge « maintenant », programmes passés atténués, bouton de retour à maintenant,
   détail du programme en feuille (mobile) ou en tête d'écran (TV).
 
+### Lecteur, recherche et Mon espace (nouveau design)
+- Lecteur redessiné : commandes minimales, panneaux audio / sous-titres et réglages, liste des chaînes à
+  gauche en direct, bandeau d'épisodes, carte « Épisode suivant ».
+- Gestes sur mobile : double toucher ±10 s cumulable, appui long en 2×, glisser horizontal pour chercher,
+  glisser vertical pour le volume (à droite) ou la luminosité (à gauche).
+- Recherche redessinée : filtres avec compteurs, correspondance surlignée, recherches récentes
+  supprimables une à une, genres ; grille de lettres pilotable à la télécommande sur Android TV.
+- Mon espace réorganisé : profil, séries suivies, puis Ma liste, Historique, Sources et Paramètres.
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.

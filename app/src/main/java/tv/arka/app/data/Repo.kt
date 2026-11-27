@@ -597,6 +597,13 @@ object Repo {
         }
     }
 
+    /** Empties "Continuer à regarder" for the active profile. Watched marks are kept. */
+    fun clearProgress() {
+        val source = active ?: return
+        progress = emptyList()
+        Store.saveProgress(source.id, progress)
+    }
+
     fun isFollowed(vod: Vod): Boolean = followed.any { it.id == vod.id }
 
     fun toggleFollow(vod: Vod) {
