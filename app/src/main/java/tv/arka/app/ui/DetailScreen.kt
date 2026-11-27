@@ -52,6 +52,10 @@ import tv.arka.app.data.Progress
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Vod
 import tv.arka.app.data.TitleCleaner
+import android.widget.Toast
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import tv.arka.app.data.Downloads
 import tv.arka.app.data.VodDetails
 import tv.arka.app.data.toPlayItem
 import tv.arka.app.data.VodKind
@@ -169,6 +173,7 @@ fun DetailScreen(vod: Vod, onBack: () -> Unit, onOpen: (Vod) -> Unit) {
             )
         }
         VariantChips(vod, onOpen)
+        TrailerButton(vod)
     }
     val mainButton: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier) {
@@ -263,6 +268,7 @@ fun DetailScreen(vod: Vod, onBack: () -> Unit, onOpen: (Vod) -> Unit) {
                                     SecondaryButton("Recommencer", { play(context, listOf(vod.toPlayItem()), 0, startOver = true) })
                                 }
                                 MyListButton(vod)
+                                DownloadButton(vod.toPlayItem())
                                 SecondaryButton(
                                     if (movieWatched) "Vu" else "Marquer vu",
                                     { Repo.setWatched(movieKey, !movieWatched) },
@@ -324,6 +330,20 @@ fun DetailScreen(vod: Vod, onBack: () -> Unit, onOpen: (Vod) -> Unit) {
                             ) { Repo.toggleMyList(vod) }
                             IconAction(R.drawable.ic_arka_vu, if (movieWatched) "Vu" else "Marquer vu", movieWatched) {
                                 Repo.setWatched(movieKey, !movieWatched)
+                            }
+                            val movieItem = vod.toPlayItem()
+                            if (Downloads.canDownload(movieItem)) {
+                                val kept = Downloads.has(movieItem.key)
+                                IconAction(
+                                    if (kept) R.drawable.ic_arka_telecharge else R.drawable.ic_arka_telecharger,
+                                    if (kept) "Téléchargé" else "Télécharger",
+                                    kept,
+                                ) {
+                                    if (!kept) {
+                                        val problem = Downloads.start(context.applicationContext, movieItem)
+                                        Toast.makeText(context, problem ?: "Téléchargement lancé", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
                             }
                         }
                     }
@@ -442,14 +462,21 @@ private fun SeasonLine(number: Int, episodes: List<Episode>, watched: Set<String
 }
 
 @Composable
+@OptIn(ExperimentalFoundationApi::class)
 private fun EpisodeRow(vod: Vod, episode: Episode, watched: Boolean, onClick: () -> Unit) {
     val tv = LocalIsTv.current
+    val context = LocalContext.current
     val progress = Repo.progressFor("e:${episode.id}")
+    val downloaded = Downloads.has("e:${episode.id}")
     Row(
         Modifier.fillMaxWidth()
             .focusHighlight(ArkaRadius.sm, 1f)
             .clip(RoundedCornerShape(ArkaRadius.sm))
-            .clickable(onClick = onClick)
+            // A long press (or a long OK on the remote) downloads the episode.
+            .combinedClickable(onClick = onClick, onLongClick = {
+                val problem = Downloads.start(context.applicationContext, episodeItem(vod, episode))
+                Toast.makeText(context, problem ?: "Téléchargement lancé", Toast.LENGTH_SHORT).show()
+            })
             .padding(horizontal = if (tv) ArkaSpacing.sm else ArkaTheme.margin, vertical = ArkaSpacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -482,7 +509,7 @@ private fun EpisodeRow(vod: Vod, episode: Episode, watched: Boolean, onClick: ()
                 watched -> "Vu"
                 else -> ""
             }
-            val line = listOf(if (episode.durationMin > 0) "${episode.durationMin} min" else "", state)
+            val line = listOf(if (episode.durationMin > 0) "${episode.durationMin} min" else "", state, if (downloaded) "téléchargé" else "")
                 .filter { it.isNotBlank() }.joinToString(" · ")
             if (line.isNotBlank()) {
                 Text(line, color = ArkaColors.TextSecondary, fontSize = if (tv) 11.sp else 12.sp, modifier = Modifier.padding(top = 2.dp))

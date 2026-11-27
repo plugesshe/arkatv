@@ -16,7 +16,16 @@ import kotlin.concurrent.thread
  * asks for the four-digit [code] shown on the TV, and stops after a few wrong codes.
  * The page is plain HTTP: it must only be used on a home network.
  */
-class PairingServer(private val label: String, private val onValue: (String) -> Unit) {
+class PairingServer(private val fields: List<Field>, private val onValues: (Map<String, String>) -> Unit) {
+    /** One input of the page. [long] shows a multi-line box; [minLength] 0 makes the field optional. */
+    class Field(val name: String, val label: String, val long: Boolean = false, val minLength: Int = 1, val secret: Boolean = false)
+
+    /** A single long value, such as an access key. */
+    constructor(label: String, onValue: (String) -> Unit) : this(
+        listOf(Field("value", label, long = true, minLength = MIN_VALUE)),
+        { values -> onValue(values["value"].orEmpty()) },
+    )
+
     val code: String = (1000..9999).random().toString()
 
     @Volatile
@@ -103,13 +112,14 @@ class PairingServer(private val label: String, private val onValue: (String) -> 
             read += count
         }
         val form = parseForm(String(body, 0, read, Charsets.UTF_8))
-        val value = form["value"].orEmpty().trim()
-        return if (form["code"]?.trim() == code && value.length >= MIN_VALUE) {
-            onValue(value)
-            respond(client, page("C'est enregistré. Vous pouvez fermer cette page."))
+        val values = fields.associate { it.name to form[it.name].orEmpty().trim() }
+        val complete = fields.all { values[it.name].orEmpty().length >= it.minLength }
+        return if (form["code"]?.trim() == code && complete) {
+            onValues(values)
+            respond(client, page("C'est envoyé. Vous pouvez fermer cette page."))
             Outcome.ACCEPTED
         } else {
-            respond(client, page("Code incorrect ou valeur trop courte. Vérifiez le code affiché sur la TV."))
+            respond(client, page("Code incorrect ou champ incomplet. Vérifiez le code affiché sur la TV."))
             Outcome.REFUSED
         }
     }
@@ -134,9 +144,16 @@ class PairingServer(private val label: String, private val onValue: (String) -> 
             "<h2>ArkaTV</h2>" + (if (message.isNotEmpty()) "<p><b>" + escape(message) + "</b></p>" else "") +
             "<form method=\"post\" action=\"/\"><label>Code affiché sur la TV</label>" +
             "<input name=\"code\" inputmode=\"numeric\" maxlength=\"4\" autocomplete=\"off\">" +
-            "<label>" + escape(label) + "</label><textarea name=\"value\" autocomplete=\"off\"></textarea>" +
+            fields.joinToString("") { field ->
+                "<label>" + escape(field.label) + "</label>" + if (field.long) {
+                    "<textarea name=\"" + field.name + "\" autocomplete=\"off\"></textarea>"
+                } else {
+                    "<input name=\"" + field.name + "\" autocomplete=\"off\" autocapitalize=\"off\" type=\"" +
+                        (if (field.secret) "password" else "text") + "\">"
+                }
+            } +
             "<button type=\"submit\">Envoyer à la TV</button></form>" +
-            "<p>La valeur est envoyée à votre TV sur votre réseau local, puis conservée chiffrée sur l'appareil.</p></body></html>"
+            "<p>Ces informations sont envoyées à votre TV sur votre réseau local, puis conservées chiffrées sur l'appareil.</p></body></html>"
 
     private fun escape(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 

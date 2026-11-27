@@ -338,6 +338,24 @@ object Repo {
         }
     }
 
+    /** Trailer of a matched title on YouTube, or null (no key, not matched, none listed, no network). */
+    suspend fun trailerUrl(vod: Vod): String? {
+        val source = active ?: return null
+        val catalogStore = store ?: return null
+        val token = tmdbToken
+        if (token.isBlank() || source.type != "xtream") return null
+        return withContext(Dispatchers.IO) {
+            try {
+                val id = catalogStore.tmdbId(source, vod.kind, vod.id)
+                if (id > 0) Tmdb.trailer(token, vod.kind == VodKind.MOVIE, id) else null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
     /** The versions of this title the source offers, when it has been matched; empty otherwise. */
     suspend fun variants(vod: Vod): List<Vod> {
         val source = active ?: return emptyList()

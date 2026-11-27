@@ -47,6 +47,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.arka.app.R
+import android.os.Handler
+import android.os.Looper
+import androidx.compose.runtime.DisposableEffect
+import tv.arka.app.data.PairingServer
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Source
 import tv.arka.app.data.XtreamApi
@@ -78,6 +82,13 @@ fun AddSourceScreen(onBack: (() -> Unit)?, onDone: () -> Unit) {
     var errorKind by remember { mutableStateOf<String?>(null) }
     var errorDetail by remember { mutableStateOf("") }
     var added by remember { mutableStateOf<Source?>(null) }
+    // Typing an address and a password with a remote is tedious: a page on the local network lets
+    // a phone or a computer fill this form instead.
+    var pairing by remember { mutableStateOf<PairingServer?>(null) }
+    var pairingAddress by remember { mutableStateOf("") }
+    DisposableEffect(Unit) {
+        onDispose { pairing?.stop() }
+    }
 
     BackHandler(enabled = step == STEP_FORM) { step = STEP_TYPE }
 
@@ -176,6 +187,42 @@ fun AddSourceScreen(onBack: (() -> Unit)?, onDone: () -> Unit) {
                         if (xtream) "Sinon, celui du serveur" else "Sinon, celui indiqué par la playlist",
                         keyboard = KeyboardType.Uri,
                     ) { epg = it }
+
+                    val remote = pairing
+                    ArkaChip(if (remote == null) "Remplir depuis un téléphone" else "Fermer la page de saisie", remote != null) {
+                        if (remote != null) {
+                            remote.stop()
+                            pairing = null
+                        } else {
+                            val main = Handler(Looper.getMainLooper())
+                            val fields = listOfNotNull(
+                                PairingServer.Field("name", "Nom de la source (facultatif)", minLength = 0),
+                                PairingServer.Field("url", if (xtream) "Adresse du serveur" else "Lien de la playlist", minLength = 8),
+                                if (xtream) PairingServer.Field("user", "Nom d'utilisateur") else null,
+                                if (xtream) PairingServer.Field("pass", "Mot de passe", secret = true) else null,
+                            )
+                            val created = PairingServer(fields) { values ->
+                                main.post {
+                                    values["name"]?.takeIf { it.isNotBlank() }?.let { name = it }
+                                    url = values["url"].orEmpty()
+                                    if (xtream) {
+                                        user = values["user"].orEmpty()
+                                        pass = values["pass"].orEmpty()
+                                    }
+                                    pairing = null
+                                }
+                            }
+                            pairingAddress = PairingServer.localAddress().orEmpty()
+                            if (pairingAddress.isNotEmpty() && created.start()) pairing = created
+                        }
+                    }
+                    if (remote != null) {
+                        Text(
+                            "Sur un appareil du même réseau, ouvrez  http://$pairingAddress:${remote.port}  et saisissez le code  ${remote.code}. " +
+                                "La page n'est pas chiffrée : à utiliser sur votre réseau domestique uniquement.",
+                            style = ArkaTheme.type.body,
+                        )
+                    }
 
                     val complete = url.isNotBlank() && (!xtream || (user.isNotBlank() && pass.isNotBlank()))
                     if (busy) {

@@ -60,6 +60,23 @@ class TmdbTest {
     }
 
     @Test
+    fun picksATrailerOnYouTubeAndIgnoresOtherVideos() {
+        val videos = """{"results":[
+          {"site":"Vimeo","type":"Trailer","key":"123456789"},
+          {"site":"YouTube","type":"Featurette","key":"aaaaaaaaaaa"},
+          {"site":"YouTube","type":"Teaser","key":"tttttttttt1"},
+          {"site":"YouTube","type":"Trailer","key":"dQw4w9WgXcQ"}
+        ]}"""
+        assertEquals("https://www.youtube.com/watch?v=dQw4w9WgXcQ", Tmdb.parseTrailer(videos))
+        assertEquals(
+            "https://www.youtube.com/watch?v=tttttttttt1",
+            Tmdb.parseTrailer("""{"results":[{"site":"YouTube","type":"Teaser","key":"tttttttttt1"}]}"""),
+        )
+        assertNull(Tmdb.parseTrailer("""{"results":[{"site":"YouTube","type":"Trailer","key":"bad key!"}]}"""))
+        assertNull(Tmdb.parseTrailer("{}"))
+    }
+
+    @Test
     fun readsThePairingForm() {
         val form = PairingServer.parseForm("code=1234&value=eyJhbGci.abc%2Bdef+ghi&empty=")
         assertEquals("1234", form["code"])

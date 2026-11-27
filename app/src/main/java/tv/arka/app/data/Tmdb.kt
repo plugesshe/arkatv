@@ -109,5 +109,29 @@ object Tmdb {
         )
     }
 
+    /** Address of the trailer on YouTube, French first, or null when TMDB lists none. */
+    fun trailer(token: String, movie: Boolean, id: Int): String? {
+        val path = API + (if (movie) "/movie/" else "/tv/") + id + "/videos?language="
+        return parseTrailer(Http.getString(path + "fr-FR", bearer = token))
+            ?: parseTrailer(Http.getString(path + "en-US", bearer = token))
+    }
+
+    fun parseTrailer(json: String): String? {
+        val results = JSONObject(json).optJSONArray("results") ?: return null
+        var teaser: String? = null
+        for (i in 0 until results.length()) {
+            val item = results.optJSONObject(i) ?: continue
+            val key = item.optString("key")
+            if (item.optString("site") != "YouTube" || !Regex("[A-Za-z0-9_-]{6,20}").matches(key)) continue
+            when (item.optString("type")) {
+                "Trailer" -> return YOUTUBE + key
+                "Teaser" -> if (teaser == null) teaser = YOUTUBE + key
+            }
+        }
+        return teaser
+    }
+
+    private const val YOUTUBE = "https://www.youtube.com/watch?v="
+
     fun ratingText(rating: Double): String = String.format(Locale.US, "%.1f", rating)
 }

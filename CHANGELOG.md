@@ -25,7 +25,15 @@
 - Groupes de chaînes personnels : appui long sur une chaîne pour l'ajouter à un groupe ou en créer un ;
   les groupes apparaissent dans le direct et dans le guide, par profil et par source.
 
+### Saisie depuis un téléphone
+- Ajout d'une source : « Remplir depuis un téléphone » ouvre une page sur le réseau local pour saisir
+  l'adresse, l'identifiant et le mot de passe sans la télécommande (code à quatre chiffres affiché sur la TV).
+
+### Bandes-annonces
+- Fiche d'un titre reconnu par TMDB : « Bande-annonce (YouTube) » ouvre la bande-annonce dans YouTube.
+
 ### Téléchargements
+- Bouton « Télécharger » sur la fiche d'un film ; appui long sur un épisode pour le télécharger.
 - Films et épisodes téléchargeables depuis les réglages du lecteur ; ils continuent en arrière-plan.
 - Mon espace › Téléchargements : progression, lecture hors connexion, suppression, espace libre.
 - Un titre téléchargé est lu depuis l'appareil, sans réseau.

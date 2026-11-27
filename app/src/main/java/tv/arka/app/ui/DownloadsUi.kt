@@ -1,5 +1,13 @@
 package tv.arka.app.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import tv.arka.app.R
+import tv.arka.app.data.Repo
+import tv.arka.app.data.Vod
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -90,5 +98,48 @@ fun DownloadsSection() {
                 }
             }
         }
+    }
+}
+
+/** "Télécharger" on a detail screen; shows "Téléchargé" once the title is in the downloads. */
+@Composable
+fun DownloadButton(item: PlayItem) {
+    if (!Downloads.canDownload(item)) return
+    val context = LocalContext.current
+    val kept = Downloads.has(item.key)
+    SecondaryButton(
+        if (kept) "Téléchargé" else "Télécharger",
+        {
+            if (!kept) {
+                val problem = Downloads.start(context.applicationContext, item)
+                Toast.makeText(context, problem ?: "Téléchargement lancé", Toast.LENGTH_SHORT).show()
+            }
+        },
+        icon = if (kept) R.drawable.ic_arka_telecharge else R.drawable.ic_arka_telecharger,
+    )
+}
+
+/** Opens the trailer in YouTube, when TMDB lists one for this title. */
+@Composable
+fun TrailerButton(vod: Vod) {
+    if (Repo.tmdbToken.isBlank()) return
+    val context = LocalContext.current
+    var link by remember(vod.id) { mutableStateOf<String?>(null) }
+    LaunchedEffect(vod.id) {
+        link = Repo.trailerUrl(vod)
+    }
+    val url = link ?: return
+    Row(Modifier.padding(top = ArkaSpacing.sm)) {
+        SecondaryButton(
+            "Bande-annonce (YouTube)",
+            {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                } catch (e: ActivityNotFoundException) {
+                    Toast.makeText(context, "Aucune application ne peut ouvrir YouTube sur cet appareil.", Toast.LENGTH_SHORT).show()
+                }
+            },
+            icon = R.drawable.ic_arka_lire,
+        )
     }
 }

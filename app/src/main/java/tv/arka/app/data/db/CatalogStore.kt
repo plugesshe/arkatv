@@ -639,6 +639,10 @@ class CatalogStore(private val database: ArkaDatabase) {
         year = match.year.ifBlank { vod.year },
     )
 
+    /** TMDB id of a matched title, or 0. */
+    suspend fun tmdbId(source: Source, kind: VodKind, streamId: String): Int =
+        dao.tmdbIdOf(source.id, kindName(kind), streamId) ?: 0
+
     /** The other versions of the same work offered by the source (4K, HD, another language…). */
     suspend fun variants(source: Source, kind: VodKind, streamId: String): List<Vod> {
         val tmdbId = dao.tmdbIdOf(source.id, kindName(kind), streamId) ?: return emptyList()
