@@ -88,6 +88,23 @@ data class Catalog(
     val isEmpty: Boolean get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty()
 }
 
+/** What an Xtream provider says about the account. Zero means "not provided". */
+data class AccountInfo(
+    val status: String,
+    val expiresAt: Long,
+    val maxConnections: Int,
+    val activeConnections: Int,
+    val checkedAt: Long,
+)
+
+/** Most recently watched first, without duplicates, bounded. */
+object RecentRules {
+    const val MAX = 15
+
+    fun push(current: List<String>, id: String): List<String> =
+        (listOf(id) + current.filterNot { it == id }).take(MAX)
+}
+
 object PlayerSession {
     var queue: List<PlayItem> = emptyList()
     var index: Int = 0

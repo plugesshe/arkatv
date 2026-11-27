@@ -20,12 +20,17 @@ est dans `PROGRESS.md`.
 
 ## P1 — Refonte premium
 
+Déjà fait, en avance sur la refonte visuelle : lecteur (vitesse, épisode suivant avec compte à rebours,
+erreurs avec actions, infos techniques) ; sources (expiration, connexions, renommer, réordonner).
+
 Accueil VOD (hero choisi par score, rangées « mieux notés », « à découvrir »), écrans Films et Séries avec
 tris et filtres, fiches enrichies (vu/non vu, recommencer, similaires), interface TV avec barre latérale,
 recherche tolérante et paginée, lecteur (vitesse, épisode suivant avec compte à rebours, diagnostics),
 gestion des sources (expiration, connexions, renommage).
 
 ## P2 — Excellence du direct
+
+Déjà fait : chaînes récentes, chaîne précédente, masquage de groupes, programme suivant dans le lecteur.
 
 Interface TV à trois zones, overlay de zapping, chaînes récentes et précédente, masquage et
 réorganisation, guide avec ligne « maintenant », jours, association XMLTV par nom, replay quand la

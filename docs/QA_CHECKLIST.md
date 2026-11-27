@@ -44,7 +44,18 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Ouvrir un résultat ajoute la recherche à l'historique ; « Effacer l'historique » le vide.
 
 ### Lecture
-- [ ] Film, épisode (enchaînement), chaîne en direct, zapping, pistes audio et sous-titres, mini-lecteur.
+- [ ] Film, épisode, chaîne en direct, zapping, pistes audio et sous-titres, mini-lecteur.
+- [ ] Vitesse de lecture sur un film ; absente en direct.
+- [ ] Fin d'épisode : compte à rebours, « Lire maintenant », « Annuler ».
+- [ ] En direct : programme en cours, « Ensuite », bouton « Chaîne précédente » après un zapping.
+- [ ] Couper le réseau pendant la lecture : message, puis « Réessayer » une fois le réseau revenu.
+- [ ] Infos techniques : les valeurs correspondent au flux.
+
+### Direct et sources
+- [ ] Regarder deux chaînes : le groupe « Récentes » apparaît, dans l'ordre.
+- [ ] Masquer un groupe : il disparaît des puces et de « Toutes » ; le réafficher.
+- [ ] Source Xtream : date d'expiration et connexions affichées après une actualisation.
+- [ ] Renommer une source, la monter et la descendre dans la liste.
 
 ### Android TV
 - [ ] Toutes les cartes et lignes montrent un contour au focus.

@@ -54,6 +54,11 @@ private val dayHourMinute: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/M
 fun formatDateTime(epochSeconds: Long): String =
     Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).format(dayHourMinute)
 
+private val dayOnly: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+fun formatDate(epochSeconds: Long): String =
+    Instant.ofEpochSecond(epochSeconds).atZone(ZoneId.systemDefault()).format(dayOnly)
+
 fun formatDuration(millis: Long): String {
     val total = millis / 1000
     val hours = total / 3600

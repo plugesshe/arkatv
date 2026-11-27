@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -65,6 +66,7 @@ import java.util.UUID
 fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (String, List<Vod>) -> Unit) {
     var liveFormat by remember { mutableStateOf(Store.liveFormat) }
     var toDelete by remember { mutableStateOf<Source?>(null) }
+    var toEdit by remember { mutableStateOf<Source?>(null) }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
         Text(
@@ -92,11 +94,28 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (Strin
                         color = ArkaMuted,
                         fontSize = 12.sp,
                     )
+                    val account = if (active) Repo.account else null
+                    if (account != null) {
+                        val parts = listOfNotNull(
+                            if (account.expiresAt > 0) "Expire le " + formatDate(account.expiresAt) else null,
+                            if (account.maxConnections > 0) {
+                                "${account.activeConnections} connexion(s) utilisée(s) sur ${account.maxConnections}"
+                            } else {
+                                null
+                            },
+                        )
+                        if (parts.isNotEmpty()) {
+                            Text(parts.joinToString(" · "), color = ArkaMuted, fontSize = 12.sp)
+                        }
+                    }
                 }
                 if (active) {
                     IconButton(onClick = { Repo.reload() }) {
                         Icon(Icons.Filled.Refresh, contentDescription = "Recharger")
                     }
+                }
+                IconButton(onClick = { toEdit = source }) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Renommer ou déplacer", tint = ArkaMuted)
                 }
                 IconButton(onClick = { toDelete = source }) {
                     Icon(Icons.Filled.Delete, contentDescription = "Supprimer", tint = ArkaMuted)
@@ -169,6 +188,40 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (Strin
             color = ArkaMuted,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 16.dp),
+        )
+    }
+
+    toEdit?.let { source ->
+        var name by remember(source.id) { mutableStateOf(source.name) }
+        val index = Repo.sources.indexOfFirst { it.id == source.id }
+        AlertDialog(
+            onDismissRequest = { toEdit = null },
+            containerColor = ArkaSurface,
+            title = { Text("Modifier la source") },
+            text = {
+                Column {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nom") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row {
+                        TextButton(enabled = index > 0, onClick = { Repo.moveSource(source, -1) }) { Text("Monter") }
+                        TextButton(enabled = index in 0 until Repo.sources.lastIndex, onClick = { Repo.moveSource(source, 1) }) {
+                            Text("Descendre")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = name.isNotBlank(), onClick = {
+                    Repo.renameSource(source, name)
+                    toEdit = null
+                }) { Text("Enregistrer") }
+            },
+            dismissButton = { TextButton(onClick = { toEdit = null }) { Text("Fermer") } },
         )
     }
 

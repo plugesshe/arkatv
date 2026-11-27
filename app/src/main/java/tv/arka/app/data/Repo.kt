@@ -65,6 +65,15 @@ object Repo {
     var myList by mutableStateOf(listOf<Vod>())
     var progress by mutableStateOf(listOf<Progress>())
 
+    /** Live channel ids, most recently watched first. */
+    var recentChannels by mutableStateOf(listOf<String>())
+
+    /** Live category ids the user chose to hide. */
+    var hiddenCategories by mutableStateOf(setOf<String>())
+
+    /** Xtream account details, as last reported by the provider. */
+    var account by mutableStateOf<AccountInfo?>(null)
+
     private var initialised = false
     private var store: CatalogStore? = null
     private var loadJob: Job? = null
@@ -89,6 +98,9 @@ object Repo {
         favorites = Store.loadFavorites(source.id)
         myList = Store.loadMyList(source.id)
         progress = Store.loadProgress(source.id)
+        recentChannels = Store.loadRecentChannels(source.id)
+        hiddenCategories = Store.loadHiddenCategories(source.id)
+        account = Store.loadAccount(source.id)
         open(source, force = false)
     }
 
@@ -194,7 +206,8 @@ object Repo {
             if (force || !hasCache || now - lastSync > CATALOG_TTL_MS) {
                 refreshing = hasCache
                 try {
-                    val discoveredEpgUrl = sync(source, catalogStore)
+                    val result = sync(source, catalogStore)
+                    val discoveredEpgUrl = result.epgUrl
                     val format = Store.liveFormat
                     val fresh = withContext(Dispatchers.IO) { catalogStore.loadSummary(source, format, ROW_SIZE) }
                     if (mine != generation) return@launch
@@ -203,6 +216,10 @@ object Repo {
                     lastSync = now
                     Store.setLastSync(source.id, now)
                     if (discoveredEpgUrl.isNotBlank()) Store.setDiscoveredEpgUrl(source.id, discoveredEpgUrl)
+                    result.account?.let {
+                        account = it
+                        Store.saveAccount(source.id, it)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -256,7 +273,9 @@ object Repo {
      * the full lists never sit in memory, and a failure leaves the previous catalogue untouched.
      * Returns the guide URL found in an M3U header, if any.
      */
-    private suspend fun sync(source: Source, catalogStore: CatalogStore): String {
+    private class SyncResult(val epgUrl: String, val account: AccountInfo?)
+
+    private suspend fun sync(source: Source, catalogStore: CatalogStore): SyncResult {
         // A provider without films or series must not block the channels. But once a kind has
         // been stored, failing to download it again fails the refresh rather than emptying it.
         val hadMovies = catalogStore.count(source, VodKind.MOVIE) > 0
@@ -264,6 +283,7 @@ object Repo {
         val format = Store.liveFormat
         return withContext(Dispatchers.IO) {
             var epgUrl = ""
+            var info: AccountInfo? = null
             if (source.type != "xtream") {
                 catalogStore.replaceBlocking(source) { writer ->
                     Http.open(source.url).use { response ->
@@ -276,7 +296,7 @@ object Repo {
                 }
             } else {
                 val api = XtreamApi(source)
-                api.authenticate()
+                info = api.authenticate()
                 catalogStore.replaceBlocking(source) { writer ->
                     writer.liveCategories(api.liveCategories())
                     api.eachLiveStream(format, writer::channel)
@@ -290,7 +310,7 @@ object Repo {
                     }
                 }
             }
-            epgUrl
+            SyncResult(epgUrl, info)
         }
     }
 
@@ -382,6 +402,38 @@ object Repo {
 
     fun nowPlaying(epgId: String, now: Long): Program? =
         programs(epgId).firstOrNull { it.start <= now && now < it.end }
+
+    fun recordRecentChannel(channelId: String) {
+        val source = active ?: return
+        recentChannels = RecentRules.push(recentChannels, channelId)
+        Store.saveRecentChannels(source.id, recentChannels)
+    }
+
+    fun setCategoryHidden(categoryId: String, hidden: Boolean) {
+        val source = active ?: return
+        hiddenCategories = if (hidden) hiddenCategories + categoryId else hiddenCategories - categoryId
+        Store.saveHiddenCategories(source.id, hiddenCategories)
+    }
+
+    fun renameSource(source: Source, name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty()) return
+        val renamed = source.copy(name = clean)
+        sources = sources.map { if (it.id == source.id) renamed else it }
+        Store.saveSources(sources)
+        if (active?.id == source.id) active = renamed
+    }
+
+    /** Moves a source up (negative [delta]) or down in the list. */
+    fun moveSource(source: Source, delta: Int) {
+        val from = sources.indexOfFirst { it.id == source.id }
+        val to = from + delta
+        if (from < 0 || to < 0 || to > sources.lastIndex) return
+        val list = sources.toMutableList()
+        list.add(to, list.removeAt(from))
+        sources = list
+        Store.saveSources(sources)
+    }
 
     fun toggleFavorite(channelId: String) {
         val source = active ?: return

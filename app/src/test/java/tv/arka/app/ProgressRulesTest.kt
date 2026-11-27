@@ -6,6 +6,7 @@ import org.junit.Test
 import tv.arka.app.data.PlayItem
 import tv.arka.app.data.Progress
 import tv.arka.app.data.ProgressRules
+import tv.arka.app.data.RecentRules
 
 class ProgressRulesTest {
     private fun item(key: String) = PlayItem(key, "Titre", "", "url", live = false)
@@ -31,6 +32,15 @@ class ProgressRulesTest {
         val existing = listOf(Progress(item("a"), 10_000, 100_000, 1))
         assertTrue(ProgressRules.update(existing, item("a"), 96_000, 100_000, 2).isEmpty())
         assertTrue(ProgressRules.update(existing, item("a"), 2_000, 100_000, 2).isEmpty())
+    }
+
+    @Test
+    fun recentChannelsAreMostRecentFirstWithoutDuplicates() {
+        var recent = emptyList<String>()
+        listOf("a", "b", "a", "c").forEach { recent = RecentRules.push(recent, it) }
+        assertEquals(listOf("c", "a", "b"), recent)
+        repeat(RecentRules.MAX + 5) { recent = RecentRules.push(recent, "k$it") }
+        assertEquals(RecentRules.MAX, recent.size)
     }
 
     @Test

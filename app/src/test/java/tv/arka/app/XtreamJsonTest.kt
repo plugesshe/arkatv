@@ -70,6 +70,21 @@ class XtreamJsonTest {
     }
 
     @Test
+    fun readsAccountDetailsWhateverTheirTypes() {
+        val full = JSONObject("""{"auth": 1, "status": "Active", "exp_date": "1798761600", "max_connections": "2", "active_cons": 1}""")
+        val account = XtreamJson.accountInfo(full, 42)
+        assertEquals("Active", account.status)
+        assertEquals(1798761600L, account.expiresAt)
+        assertEquals(2, account.maxConnections)
+        assertEquals(1, account.activeConnections)
+        assertEquals(42L, account.checkedAt)
+
+        val unlimited = XtreamJson.accountInfo(JSONObject("""{"auth": 1, "status": "Active", "exp_date": null}"""), 0)
+        assertEquals(0L, unlimited.expiresAt)
+        assertEquals(0, unlimited.maxConnections)
+    }
+
+    @Test
     fun buildsStreamUrlsFromTheSource() {
         val api = XtreamApi(Source("s", "xtream", "Test", "host.test:8080/", "alice", "pw"))
         assertEquals("http://host.test:8080", api.base)

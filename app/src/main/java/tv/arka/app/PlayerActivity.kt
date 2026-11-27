@@ -10,6 +10,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,26 +19,35 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Forward10
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
+import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -45,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,10 +63,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -82,7 +95,9 @@ import tv.arka.app.data.PlayItem
 import tv.arka.app.data.PlayerSession
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Store
+import tv.arka.app.ui.ArkaCard
 import tv.arka.app.ui.ArkaMuted
+import tv.arka.app.ui.ArkaRadius
 import tv.arka.app.ui.ArkaRed
 import tv.arka.app.ui.ArkaSurface
 import tv.arka.app.ui.ArkaTheme
@@ -90,6 +105,9 @@ import tv.arka.app.ui.formatClock
 import tv.arka.app.ui.formatDuration
 import tv.arka.app.ui.rememberNow
 import java.util.Locale
+import kotlin.math.roundToInt
+
+private const val NEXT_EPISODE_DELAY_S = 8
 
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
@@ -99,6 +117,12 @@ class PlayerActivity : ComponentActivity() {
     private var overlay by mutableStateOf(true)
     private var inPip by mutableStateOf(false)
     private var errorText by mutableStateOf<String?>(null)
+
+    /** True once an episode has ended and the next one is about to start. */
+    private var pendingNext by mutableStateOf(false)
+
+    /** Position in the queue of the live channel watched just before the current one. */
+    private var lastChannelIndex by mutableIntStateOf(-1)
     private var triedAlternative = false
     private var currentUrl = ""
 
@@ -139,14 +163,18 @@ class PlayerActivity : ComponentActivity() {
                         triedAlternative = true
                         start(alternative, 0)
                     }
-                    else -> errorText = "Lecture impossible (${error.errorCodeName})"
+                    else -> {
+                        errorText = describe(error)
+                        overlay = true
+                    }
                 }
             }
 
             override fun onPlaybackStateChanged(playbackState: Int) {
                 if (playbackState == Player.STATE_READY) errorText = null
                 if (playbackState == Player.STATE_ENDED && !queue[index].live) {
-                    if (index < queue.lastIndex) load(index + 1) else finish()
+                    persist()
+                    if (index < queue.lastIndex) pendingNext = true else finish()
                 }
             }
         })
@@ -158,13 +186,20 @@ class PlayerActivity : ComponentActivity() {
                 PlayerScreen(
                     player = exo,
                     item = queue[index],
+                    nextItem = queue.getOrNull(index + 1),
                     hasQueue = queue.size > 1,
+                    hasLastChannel = lastChannelIndex in queue.indices && lastChannelIndex != index,
                     overlay = overlay && !inPip,
+                    inPip = inPip,
                     error = errorText,
+                    pendingNext = pendingNext,
                     onOverlay = { overlay = it },
                     onBack = { finish() },
                     onPrevious = { load(index - 1) },
                     onNext = { load(index + 1) },
+                    onLastChannel = { goToLastChannel() },
+                    onCancelNext = { pendingNext = false },
+                    onRetry = { retry() },
                     onPip = { enterPip() },
                 )
             }
@@ -174,10 +209,16 @@ class PlayerActivity : ComponentActivity() {
     private fun load(target: Int) {
         val exo = player ?: return
         persist()
+        val previous = index
         index = ((target % queue.size) + queue.size) % queue.size
         triedAlternative = false
         errorText = null
+        pendingNext = false
         val item = queue[index]
+        if (item.live) {
+            if (previous != index && queue[previous].live) lastChannelIndex = previous
+            if (item.key.startsWith("c:")) Repo.recordRecentChannel(item.key.removePrefix("c:"))
+        }
         val resume = if (item.live) 0L else Repo.progressFor(item.key)?.position ?: 0L
         start(item.url, resume)
         exo.playWhenReady = true
@@ -191,12 +232,47 @@ class PlayerActivity : ComponentActivity() {
         exo.playWhenReady = true
     }
 
+    private fun retry() {
+        val exo = player ?: return
+        val item = queue[index]
+        triedAlternative = false
+        errorText = null
+        start(item.url, if (item.live) 0L else exo.currentPosition.coerceAtLeast(0))
+    }
+
+    private fun goToLastChannel() {
+        if (lastChannelIndex in queue.indices && lastChannelIndex != index) load(lastChannelIndex)
+    }
+
     /** Xtream live streams exist as both .ts and .m3u8: try the other one when the first fails. */
     private fun alternativeUrl(url: String): String? = when {
         "/live/" !in url -> null
         url.endsWith(".ts") -> url.removeSuffix(".ts") + ".m3u8"
         url.endsWith(".m3u8") -> url.removeSuffix(".m3u8") + ".ts"
         else -> null
+    }
+
+    /** A message the viewer can act on; the technical code stays visible for support. */
+    private fun describe(error: PlaybackException): String {
+        val message = when (error.errorCode) {
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+            PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+            -> "Connexion au fournisseur impossible. Vérifiez votre réseau."
+            PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+            PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+            -> "Le fournisseur refuse ce flux ou ne le propose plus."
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+            PlaybackException.ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+            -> "Ce flux est dans un format que le lecteur ne sait pas lire."
+            PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FAILED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+            PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+            -> "Cet appareil ne peut pas décoder cette vidéo."
+            else -> "Lecture impossible."
+        }
+        return message + "\n" + error.errorCodeName
     }
 
     private fun persist() {
@@ -242,6 +318,11 @@ class PlayerActivity : ComponentActivity() {
             }
             KeyEvent.KEYCODE_CHANNEL_DOWN, KeyEvent.KEYCODE_DPAD_DOWN -> if (live) {
                 load(index - 1)
+                overlay = true
+                return true
+            }
+            KeyEvent.KEYCODE_LAST_CHANNEL -> if (live) {
+                goToLastChannel()
                 overlay = true
                 return true
             }
@@ -303,18 +384,64 @@ private fun selectTrack(player: Player, type: Int, option: TrackOption?) {
     player.trackSelectionParameters = builder.build()
 }
 
+/** What the player actually reports about the stream being decoded: nothing is guessed. */
+@androidx.annotation.OptIn(UnstableApi::class)
+private fun diagnostics(player: ExoPlayer, item: PlayItem): List<Pair<String, String>> {
+    val video = player.videoFormat
+    val audio = player.audioFormat
+    val videoText = if (video == null) {
+        "—"
+    } else {
+        listOfNotNull(
+            video.sampleMimeType ?: video.codecs,
+            if (video.width > 0 && video.height > 0) "${video.width}×${video.height}" else null,
+            if (video.frameRate > 0) "${video.frameRate.roundToInt()} i/s" else null,
+            if (video.bitrate > 0) "${video.bitrate / 1000} kb/s" else null,
+        ).joinToString(" · ").ifBlank { "—" }
+    }
+    val audioText = if (audio == null) {
+        "—"
+    } else {
+        listOfNotNull(
+            audio.sampleMimeType ?: audio.codecs,
+            if (audio.channelCount > 0) "${audio.channelCount} canaux" else null,
+            if (audio.sampleRate > 0) "${audio.sampleRate} Hz" else null,
+            if (audio.bitrate > 0) "${audio.bitrate / 1000} kb/s" else null,
+        ).joinToString(" · ").ifBlank { "—" }
+    }
+    val extension = item.url.substringBefore('?').substringAfterLast('/', "").substringAfterLast('.', "")
+    return listOf(
+        "Flux" to (if (item.live) "Direct" else "À la demande") + if (extension.isNotBlank()) " · $extension" else "",
+        "Vidéo" to videoText,
+        "Audio" to audioText,
+        "Tampon" to "${player.totalBufferedDuration / 1000} s",
+        "Images perdues" to (player.videoDecoderCounters?.droppedBufferCount ?: 0).toString(),
+    )
+}
+
+private val speeds = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+private fun speedLabel(speed: Float): String = if (speed == 1f) "Normale" else "×" + speed.toString().removeSuffix(".0")
+
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
 private fun PlayerScreen(
     player: ExoPlayer,
     item: PlayItem,
+    nextItem: PlayItem?,
     hasQueue: Boolean,
+    hasLastChannel: Boolean,
     overlay: Boolean,
+    inPip: Boolean,
     error: String?,
+    pendingNext: Boolean,
     onOverlay: (Boolean) -> Unit,
     onBack: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
+    onLastChannel: () -> Unit,
+    onCancelNext: () -> Unit,
+    onRetry: () -> Unit,
     onPip: () -> Unit,
 ) {
     var position by remember { mutableLongStateOf(0L) }
@@ -324,20 +451,30 @@ private fun PlayerScreen(
     var zoom by remember { mutableStateOf(false) }
     var drag by remember { mutableStateOf<Float?>(null) }
     var showTracks by remember { mutableStateOf(false) }
+    var showSpeed by remember { mutableStateOf(false) }
+    var showStats by remember { mutableStateOf(false) }
+    var stats by remember { mutableStateOf(listOf<Pair<String, String>>()) }
+    var speed by remember { mutableFloatStateOf(1f) }
     var activity by remember { mutableIntStateOf(0) }
     val now = rememberNow()
 
-    LaunchedEffect(player) {
+    LaunchedEffect(player, showStats, item.key) {
         while (true) {
             position = player.currentPosition.coerceAtLeast(0)
             duration = player.duration.coerceAtLeast(0)
             playing = player.playWhenReady
             buffering = player.playbackState == Player.STATE_BUFFERING
+            if (showStats) stats = diagnostics(player, item)
             delay(400)
         }
     }
-    LaunchedEffect(overlay, activity, showTracks) {
-        if (overlay && !showTracks) {
+    LaunchedEffect(item.live, speed) {
+        // Live streams always play at normal speed.
+        player.setPlaybackSpeed(if (item.live) 1f else speed)
+    }
+    val dialogOpen = showTracks || showSpeed
+    LaunchedEffect(overlay, activity, dialogOpen, error, pendingNext) {
+        if (overlay && !dialogOpen && error == null && !pendingNext) {
             delay(5000)
             onOverlay(false)
         }
@@ -363,15 +500,8 @@ private fun PlayerScreen(
             ) { onOverlay(!overlay) }
         )
 
-        if (buffering && error == null) {
+        if (buffering && error == null && !pendingNext) {
             CircularProgressIndicator(color = ArkaRed, modifier = Modifier.align(Alignment.Center))
-        }
-        if (error != null) {
-            Text(
-                error,
-                color = Color.White,
-                modifier = Modifier.align(Alignment.Center).background(Color.Black.copy(alpha = 0.7f)).padding(16.dp),
-            )
         }
 
         if (overlay) {
@@ -399,13 +529,35 @@ private fun PlayerScreen(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    val program = if (item.live) Repo.nowPlaying(item.epgId, now) else null
-                    val subtitle = when {
-                        program != null -> formatClock(program.start) + " – " + formatClock(program.end) + " · " + program.title
-                        else -> item.subtitle
-                    }
-                    if (subtitle.isNotBlank()) {
-                        Text(subtitle, color = ArkaMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val programs = if (item.live) Repo.programs(item.epgId) else emptyList()
+                    val current = programs.firstOrNull { it.start <= now && now < it.end }
+                    if (current != null) {
+                        Text(
+                            formatClock(current.start) + " – " + formatClock(current.end) + " · " + current.title,
+                            color = Color.White,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        val span = (current.end - current.start).coerceAtLeast(1)
+                        LinearProgressIndicator(
+                            progress = { ((now - current.start).toFloat() / span).coerceIn(0f, 1f) },
+                            color = ArkaRed,
+                            trackColor = Color.White.copy(alpha = 0.25f),
+                            modifier = Modifier.padding(vertical = 4.dp).widthIn(max = 320.dp).fillMaxWidth().height(2.dp),
+                        )
+                        val following = programs.firstOrNull { it.start >= current.end }
+                        if (following != null) {
+                            Text(
+                                "Ensuite : " + formatClock(following.start) + " · " + following.title,
+                                color = ArkaMuted,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    } else if (item.subtitle.isNotBlank()) {
+                        Text(item.subtitle, color = ArkaMuted, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
                 if (item.live) {
@@ -419,37 +571,39 @@ private fun PlayerScreen(
                 }
             }
 
-            Row(
-                Modifier.align(Alignment.Center),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(18.dp),
-            ) {
-                if (hasQueue) {
-                    ControlButton(Icons.Filled.SkipPrevious, "Précédent") {
-                        activity++
-                        onPrevious()
+            if (error == null && !pendingNext) {
+                Row(
+                    Modifier.align(Alignment.Center),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    if (hasQueue) {
+                        ControlButton(Icons.Filled.SkipPrevious, "Précédent") {
+                            activity++
+                            onPrevious()
+                        }
                     }
-                }
-                if (!item.live) {
-                    ControlButton(Icons.Filled.Replay10, "Reculer de 10 secondes") {
-                        activity++
-                        player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                    if (!item.live) {
+                        ControlButton(Icons.Filled.Replay10, "Reculer de 10 secondes") {
+                            activity++
+                            player.seekTo((player.currentPosition - 10_000).coerceAtLeast(0))
+                        }
                     }
-                }
-                ControlButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Lecture / pause", large = true) {
-                    activity++
-                    player.playWhenReady = !player.playWhenReady
-                }
-                if (!item.live) {
-                    ControlButton(Icons.Filled.Forward10, "Avancer de 10 secondes") {
+                    ControlButton(if (playing) Icons.Filled.Pause else Icons.Filled.PlayArrow, "Lecture / pause", large = true) {
                         activity++
-                        player.seekTo(player.currentPosition + 10_000)
+                        player.playWhenReady = !player.playWhenReady
                     }
-                }
-                if (hasQueue) {
-                    ControlButton(Icons.Filled.SkipNext, "Suivant") {
-                        activity++
-                        onNext()
+                    if (!item.live) {
+                        ControlButton(Icons.Filled.Forward10, "Avancer de 10 secondes") {
+                            activity++
+                            player.seekTo(player.currentPosition + 10_000)
+                        }
+                    }
+                    if (hasQueue) {
+                        ControlButton(Icons.Filled.SkipNext, "Suivant") {
+                            activity++
+                            onNext()
+                        }
                     }
                 }
             }
@@ -479,25 +633,100 @@ private fun PlayerScreen(
                         Text(formatDuration(duration), color = Color.White, fontSize = 12.sp)
                     }
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { showTracks = true }) {
-                        Icon(Icons.Filled.Subtitles, contentDescription = null, tint = Color.White)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Audio et sous-titres", color = Color.White, fontSize = 13.sp)
+                Row(
+                    Modifier.horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (item.live && hasLastChannel) {
+                        OptionButton(Icons.Filled.SwapHoriz, "Chaîne précédente") {
+                            activity++
+                            onLastChannel()
+                        }
                     }
-                    TextButton(onClick = {
+                    OptionButton(Icons.Filled.Subtitles, "Audio et sous-titres") { showTracks = true }
+                    if (!item.live) {
+                        OptionButton(Icons.Filled.Speed, "Vitesse : " + speedLabel(speed)) { showSpeed = true }
+                    }
+                    OptionButton(Icons.Filled.AspectRatio, if (zoom) "Plein cadre" else "Format d'origine") {
                         zoom = !zoom
                         activity++
-                    }) {
-                        Icon(Icons.Filled.AspectRatio, contentDescription = null, tint = Color.White)
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (zoom) "Plein cadre" else "Format d'origine", color = Color.White, fontSize = 13.sp)
                     }
-                    TextButton(onClick = onPip) {
-                        Icon(Icons.Filled.PictureInPictureAlt, contentDescription = null, tint = Color.White)
-                        Spacer(Modifier.width(6.dp))
-                        Text("Mini-lecteur", color = Color.White, fontSize = 13.sp)
+                    OptionButton(Icons.Filled.Info, if (showStats) "Masquer les infos" else "Infos techniques") {
+                        showStats = !showStats
+                        activity++
                     }
+                    OptionButton(Icons.Filled.PictureInPictureAlt, "Mini-lecteur", onPip)
+                }
+            }
+        }
+
+        if (showStats && !inPip) {
+            Column(
+                Modifier.align(Alignment.TopEnd).padding(top = 64.dp, end = 12.dp)
+                    .clip(RoundedCornerShape(ArkaRadius.md)).background(Color.Black.copy(alpha = 0.7f)).padding(10.dp),
+            ) {
+                stats.forEach { (label, value) ->
+                    Row {
+                        Text(label, color = ArkaMuted, fontSize = 11.sp, modifier = Modifier.width(96.dp))
+                        Text(value, color = Color.White, fontSize = 11.sp)
+                    }
+                }
+            }
+        }
+
+        if (error != null && !inPip) {
+            Column(
+                Modifier.align(Alignment.Center).widthIn(max = 420.dp)
+                    .clip(RoundedCornerShape(ArkaRadius.lg)).background(Color.Black.copy(alpha = 0.8f)).padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(error.substringBefore('\n'), color = Color.White, textAlign = TextAlign.Center)
+                Text(error.substringAfter('\n', ""), color = ArkaMuted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onRetry,
+                        colors = ButtonDefaults.buttonColors(containerColor = ArkaRed, contentColor = Color.White),
+                    ) { Text("Réessayer") }
+                    if (item.live && hasQueue) {
+                        Button(
+                            onClick = onNext,
+                            colors = ButtonDefaults.buttonColors(containerColor = ArkaCard, contentColor = Color.White),
+                        ) { Text("Chaîne suivante") }
+                    }
+                    Button(
+                        onClick = onBack,
+                        colors = ButtonDefaults.buttonColors(containerColor = ArkaCard, contentColor = Color.White),
+                    ) { Text("Fermer") }
+                }
+            }
+        }
+
+        if (pendingNext && nextItem != null && !inPip) {
+            var remaining by remember(nextItem.key) { mutableIntStateOf(NEXT_EPISODE_DELAY_S) }
+            LaunchedEffect(nextItem.key) {
+                while (remaining > 0) {
+                    delay(1000)
+                    remaining--
+                }
+                onNext()
+            }
+            Column(
+                Modifier.align(Alignment.BottomEnd).padding(24.dp).widthIn(max = 360.dp)
+                    .clip(RoundedCornerShape(ArkaRadius.lg)).background(Color.Black.copy(alpha = 0.85f)).padding(16.dp),
+            ) {
+                Text("Épisode suivant dans $remaining s", color = Color.White, fontWeight = FontWeight.Bold)
+                if (nextItem.subtitle.isNotBlank()) {
+                    Text(nextItem.subtitle, color = ArkaMuted, fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                }
+                Row(Modifier.padding(top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = onNext,
+                        colors = ButtonDefaults.buttonColors(containerColor = ArkaRed, contentColor = Color.White),
+                    ) { Text("Lire maintenant") }
+                    Button(
+                        onClick = onCancelNext,
+                        colors = ButtonDefaults.buttonColors(containerColor = ArkaCard, contentColor = Color.White),
+                    ) { Text("Annuler") }
                 }
             }
         }
@@ -515,18 +744,18 @@ private fun PlayerScreen(
                     Text("Audio", color = ArkaMuted, fontSize = 12.sp)
                     if (audio.isEmpty()) Text("Aucune piste disponible", fontSize = 14.sp)
                     audio.forEach { option ->
-                        TrackLine(option.label, option.selected) {
+                        ChoiceLine(option.label, option.selected) {
                             selectTrack(player, C.TRACK_TYPE_AUDIO, option)
                             showTracks = false
                         }
                     }
                     Text("Sous-titres", color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(top = 12.dp))
-                    TrackLine("Désactivés", subtitles.none { it.selected }) {
+                    ChoiceLine("Désactivés", subtitles.none { it.selected }) {
                         selectTrack(player, C.TRACK_TYPE_TEXT, null)
                         showTracks = false
                     }
                     subtitles.forEach { option ->
-                        TrackLine(option.label, option.selected) {
+                        ChoiceLine(option.label, option.selected) {
                             selectTrack(player, C.TRACK_TYPE_TEXT, option)
                             showTracks = false
                         }
@@ -536,16 +765,44 @@ private fun PlayerScreen(
             confirmButton = { TextButton(onClick = { showTracks = false }) { Text("Fermer") } },
         )
     }
+
+    if (showSpeed) {
+        AlertDialog(
+            onDismissRequest = { showSpeed = false },
+            containerColor = ArkaSurface,
+            title = { Text("Vitesse de lecture") },
+            text = {
+                Column {
+                    speeds.forEach { value ->
+                        ChoiceLine(speedLabel(value), value == speed) {
+                            speed = value
+                            showSpeed = false
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSpeed = false }) { Text("Fermer") } },
+        )
+    }
 }
 
 @Composable
-private fun TrackLine(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChoiceLine(label: String, selected: Boolean, onClick: () -> Unit) {
     Text(
         (if (selected) "● " else "○ ") + label,
         color = if (selected) ArkaRed else Color.White,
         fontSize = 15.sp,
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
     )
+}
+
+@Composable
+private fun OptionButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Icon(icon, contentDescription = null, tint = Color.White)
+        Spacer(Modifier.width(6.dp))
+        Text(label, color = Color.White, fontSize = 13.sp, maxLines = 1)
+    }
 }
 
 @Composable

@@ -25,6 +25,20 @@
 - Résultats classés par pertinence et chargés par pages, sans plafond.
 - Historique local des recherches, effaçable.
 
+### Lecteur
+- Vitesse de lecture pour les films et séries.
+- Compte à rebours avant l'épisode suivant, annulable.
+- En direct : programme en cours avec avancement, programme suivant, retour à la chaîne précédente.
+- Messages d'erreur compréhensibles avec Réessayer, Chaîne suivante et Fermer.
+- Panneau d'infos techniques (codec, résolution, débit, tampon, images perdues).
+
+### Direct
+- Groupe « Récentes », masquage des groupes inutiles, numéro de chaîne affiché.
+
+### Sources
+- Date d'expiration et connexions du compte Xtream.
+- Renommer et réordonner les sources.
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.

@@ -11,6 +11,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import tv.arka.app.data.AccountInfo
 import tv.arka.app.data.Source
 import tv.arka.app.data.Store
 import tv.arka.app.data.security.SecretBox
@@ -81,6 +82,22 @@ class SecurityTest {
         val everything = prefs.all.values.joinToString("|") { it.toString() }
         assertFalse(everything.contains("s3cret"))
         assertFalse(everything.contains("alice"))
+    }
+
+    @Test
+    fun keepsPerSourcePreferencesAndForgetsThemWithTheSource() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        Store.init(context)
+        Store.saveRecentChannels("s3", listOf("5", "2"))
+        Store.saveHiddenCategories("s3", setOf("adult"))
+        Store.saveAccount("s3", AccountInfo("Active", 1798761600, 2, 1, 99))
+        assertEquals(listOf("5", "2"), Store.loadRecentChannels("s3"))
+        assertEquals(setOf("adult"), Store.loadHiddenCategories("s3"))
+        assertEquals(AccountInfo("Active", 1798761600, 2, 1, 99), Store.loadAccount("s3"))
+        Store.clearSource("s3")
+        assertTrue(Store.loadRecentChannels("s3").isEmpty())
+        assertTrue(Store.loadHiddenCategories("s3").isEmpty())
+        assertNull(Store.loadAccount("s3"))
     }
 
     @Test

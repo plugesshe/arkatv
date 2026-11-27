@@ -105,6 +105,50 @@ object Store {
         writeBlob("search_history", array.toString())
     }
 
+    private fun loadStrings(key: String): List<String> {
+        val raw = readBlob(key) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            (0 until array.length()).map { array.optString(it) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun saveStrings(key: String, values: Collection<String>) {
+        val array = JSONArray()
+        values.forEach { array.put(it) }
+        writeBlob(key, array.toString())
+    }
+
+    fun loadRecentChannels(sourceId: String): List<String> = loadStrings("recent_$sourceId")
+    fun saveRecentChannels(sourceId: String, ids: List<String>) = saveStrings("recent_$sourceId", ids)
+
+    fun loadHiddenCategories(sourceId: String): Set<String> = loadStrings("hidden_$sourceId").toSet()
+    fun saveHiddenCategories(sourceId: String, ids: Set<String>) = saveStrings("hidden_$sourceId", ids)
+
+    fun loadAccount(sourceId: String): AccountInfo? {
+        val raw = readBlob("account_$sourceId") ?: return null
+        return try {
+            val o = JSONObject(raw)
+            AccountInfo(
+                status = o.optString("status"),
+                expiresAt = o.optLong("exp"),
+                maxConnections = o.optInt("max"),
+                activeConnections = o.optInt("active"),
+                checkedAt = o.optLong("checked"),
+            )
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun saveAccount(sourceId: String, info: AccountInfo) = writeBlob(
+        "account_$sourceId",
+        JSONObject().put("status", info.status).put("exp", info.expiresAt).put("max", info.maxConnections)
+            .put("active", info.activeConnections).put("checked", info.checkedAt).toString(),
+    )
+
     fun loadFavorites(sourceId: String): Set<String> {
         val raw = readBlob("fav_$sourceId") ?: return emptySet()
         return try {
@@ -167,6 +211,7 @@ object Store {
         p().edit()
             .remove("enc_list_$sourceId").remove("enc_progress_$sourceId").remove("enc_fav_$sourceId")
             .remove("enc_epgurl_$sourceId").remove("sync_$sourceId").remove("epgsync_$sourceId")
+            .remove("enc_recent_$sourceId").remove("enc_hidden_$sourceId").remove("enc_account_$sourceId")
             .apply()
     }
 

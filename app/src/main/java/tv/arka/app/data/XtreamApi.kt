@@ -29,7 +29,8 @@ class XtreamApi(private val source: Source) {
         return "$base/player_api.php?$query$act$extra"
     }
 
-    fun authenticate() {
+    /** Checks the credentials and returns what the provider says about the account. */
+    fun authenticate(): AccountInfo {
         val body = Http.getString(api(null))
         val parsed: JSONObject? = try {
             JSONObject(body).optJSONObject("user_info")
@@ -38,10 +39,12 @@ class XtreamApi(private val source: Source) {
         }
         val info = parsed ?: throw IOException("Réponse inattendue du serveur (URL incorrecte ?)")
         if (info.optString("auth") != "1") throw IOException("Identifiants refusés par le serveur")
-        val status = info.optString("status")
+        val account = XtreamJson.accountInfo(info, System.currentTimeMillis())
+        val status = account.status
         if (status.isNotBlank() && !status.equals("Active", ignoreCase = true) && !status.equals("Trial", ignoreCase = true)) {
             throw IOException("Compte non actif ($status)")
         }
+        return account
     }
 
     fun liveCategories(): List<Category> = categories("get_live_categories")
@@ -149,6 +152,15 @@ class XtreamApi(private val source: Source) {
 
 /** Pure parsing of Xtream Codes responses, kept apart from the network for testing. */
 object XtreamJson {
+
+    /** [userInfo] is the "user_info" object of the authentication answer. */
+    fun accountInfo(userInfo: JSONObject, now: Long): AccountInfo = AccountInfo(
+        status = userInfo.optString("status").takeUnless { it == "null" }.orEmpty(),
+        expiresAt = userInfo.optString("exp_date").toLongOrNull() ?: 0,
+        maxConnections = userInfo.optString("max_connections").toIntOrNull() ?: 0,
+        activeConnections = userInfo.optString("active_cons").toIntOrNull() ?: 0,
+        checkedAt = now,
+    )
 
     fun seriesDetails(root: JSONObject, episodeUrl: (id: String, ext: String) -> String): VodDetails {
         val info = root.optJSONObject("info") ?: JSONObject()

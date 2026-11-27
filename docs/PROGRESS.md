@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 5).
+- Version : `0.2.0-dev` (versionCode 6).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -24,10 +24,13 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 41 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Tests unitaires | 44 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
 | Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
 | Films et séries lus par pages depuis la base (accueil, grilles), tris dans les grilles, position conservée au retour d'une fiche | fait, non testé sur appareil | `CatalogStore.loadSummary` / `vodPage`, `ui/CatalogGridScreen.kt`, `MainActivity.kt` |
 | Actualisation en flux : le catalogue est écrit en base au fil du téléchargement, en une transaction ; un échec laisse l'ancien catalogue intact | fait, testé unitairement, non testé sur appareil | `Repo.sync`, `CatalogStore.replaceBlocking` |
+| Lecteur : vitesse, compte à rebours avant l'épisode suivant, programme suivant en direct, erreurs avec actions, infos techniques, chaîne précédente | fait, non testé sur appareil | `PlayerActivity.kt` |
+| Direct : chaînes récentes, masquage de groupes, numéros de chaîne | fait, non testé sur appareil | `ui/LiveScreen.kt`, `Repo` |
+| Sources : expiration et connexions du compte Xtream, renommer, réordonner | fait, non testé sur appareil | `ui/ProfileScreen.kt`, `XtreamJson.accountInfo` |
 | Recherche sur le catalogue stocké : sans accents, classée, paginée, historique local | fait, non testé sur appareil | `data/TextNormalizer.kt`, `CatalogStore.search*`, `ui/SearchScreen.kt` |
 | Lint et tests en CI, « latest » protégée | fait | `.github/workflows/build.yml` |
 
@@ -70,6 +73,9 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
   faux positif de la règle `ProduceStateDoesNotAssignValue`.
 
 ## Points d'attention
+
+- **Le lecteur a été réécrit sans pouvoir être lancé** : c'est la partie la plus exposée à un défaut
+  invisible en CI (aucun test ne couvre l'affichage ni la lecture). À vérifier en premier sur appareil.
 
 - **Signature des APK** : les builds de debug sont signés avec la clé fixe `app/debug.keystore`
   (mot de passe standard `android`), versionnée dans ce dépôt privé. Tout build à partir du commit qui

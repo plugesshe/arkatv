@@ -21,6 +21,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -48,24 +50,71 @@ import tv.arka.app.data.Repo
 
 const val CATEGORY_ALL = "*all*"
 const val CATEGORY_FAVORITES = "*fav*"
+const val CATEGORY_RECENT = "*recent*"
 
+/** Group filter shared by the live list and the guide. The last chip opens the group manager. */
 @Composable
 fun CategoryChips(selected: String, onSelect: (String) -> Unit) {
+    var managing by remember { mutableStateOf(false) }
+    val hidden = Repo.hiddenCategories
+    val visible = Repo.liveCategories.filter { it.id !in hidden }
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item { ArkaChip("Favoris", selected == CATEGORY_FAVORITES) { onSelect(CATEGORY_FAVORITES) } }
+        if (Repo.recentChannels.isNotEmpty()) {
+            item { ArkaChip("Récentes", selected == CATEGORY_RECENT) { onSelect(CATEGORY_RECENT) } }
+        }
         item { ArkaChip("Toutes", selected == CATEGORY_ALL) { onSelect(CATEGORY_ALL) } }
-        items(Repo.liveCategories) { category ->
+        items(visible) { category ->
             ArkaChip(category.name, selected == category.id) { onSelect(category.id) }
         }
+        if (Repo.liveCategories.isNotEmpty()) {
+            item {
+                val label = if (hidden.isEmpty()) "Gérer les groupes" else "Gérer les groupes (${hidden.size} masqués)"
+                ArkaChip(label, false) { managing = true }
+            }
+        }
+    }
+    if (managing) {
+        AlertDialog(
+            onDismissRequest = { managing = false },
+            containerColor = ArkaSurface,
+            title = { Text("Groupes affichés") },
+            text = {
+                LazyColumn {
+                    items(Repo.liveCategories) { category ->
+                        val shown = category.id !in Repo.hiddenCategories
+                        Row(
+                            Modifier.fillMaxWidth().focusHighlight(scale = 1f)
+                                .clickable { Repo.setCategoryHidden(category.id, shown) },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Checkbox(checked = shown, onCheckedChange = { Repo.setCategoryHidden(category.id, !it) })
+                            Text(category.name, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { managing = false }) { Text("Terminé") } },
+        )
     }
 }
 
-fun channelsFor(category: String, channels: List<Channel>, favorites: Set<String>): List<Channel> = when (category) {
-    CATEGORY_ALL -> channels
+fun channelsFor(
+    category: String,
+    channels: List<Channel>,
+    favorites: Set<String>,
+    recent: List<String>,
+    hidden: Set<String>,
+): List<Channel> = when (category) {
+    CATEGORY_ALL -> if (hidden.isEmpty()) channels else channels.filter { it.categoryId !in hidden }
     CATEGORY_FAVORITES -> channels.filter { it.id in favorites }
+    CATEGORY_RECENT -> {
+        val byId = channels.associateBy { it.id }
+        recent.mapNotNull { byId[it] }
+    }
     else -> channels.filter { it.categoryId == category }
 }
 
@@ -97,7 +146,11 @@ fun LiveScreen() {
     var category by rememberSaveable { mutableStateOf(CATEGORY_ALL) }
     val channels = Repo.channels
     val favorites = Repo.favorites
-    val list = remember(channels, category, favorites) { channelsFor(category, channels, favorites) }
+    val recent = Repo.recentChannels
+    val hidden = Repo.hiddenCategories
+    val list = remember(channels, category, favorites, recent, hidden) {
+        channelsFor(category, channels, favorites, recent, hidden)
+    }
     val now = rememberNow()
 
     Column(Modifier.fillMaxSize()) {
@@ -137,7 +190,10 @@ fun ChannelRow(channel: Channel, now: Long, favorite: Boolean, onClick: () -> Un
         ChannelLogo(channel.logo, channel.name, Modifier.size(width = 64.dp, height = 44.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(channel.number.toString(), color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
+                Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
             if (program != null) {
                 Text(
                     program.title,

@@ -73,7 +73,11 @@ fun GuideScreen() {
     var category by rememberSaveable { mutableStateOf(CATEGORY_ALL) }
     val channels = Repo.channels
     val favorites = Repo.favorites
-    val list = remember(channels, category, favorites) { channelsFor(category, channels, favorites) }
+    val recent = Repo.recentChannels
+    val hidden = Repo.hiddenCategories
+    val list = remember(channels, category, favorites, recent, hidden) {
+        channelsFor(category, channels, favorites, recent, hidden)
+    }
     val now = rememberNow()
     val start = remember { (System.currentTimeMillis() / 1000 - 1800) / 1800 * 1800 }
     val end = start + GUIDE_HOURS * 3600
