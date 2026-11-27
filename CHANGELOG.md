@@ -28,6 +28,11 @@
 - Groupes de chaînes personnels : appui long sur une chaîne pour l'ajouter à un groupe ou en créer un ;
   les groupes apparaissent dans le direct et dans le guide, par profil et par source.
 
+### ArkaTV Connect
+- Télécommande dans le navigateur d'un téléphone ou d'un ordinateur du même réseau : flèches, OK, Retour,
+  lecture / pause, avance et retour, chaîne suivante et précédente, et saisie de texte au clavier.
+  Désactivée par défaut, protégée par un code à quatre chiffres affiché dans les paramètres.
+
 ### Saisie depuis un téléphone
 - Ajout d'une source : « Remplir depuis un téléphone » ouvre une page sur le réseau local pour saisir
   l'adresse, l'identifiant et le mot de passe sans la télécommande (code à quatre chiffres affiché sur la TV).

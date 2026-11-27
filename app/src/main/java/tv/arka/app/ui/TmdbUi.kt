@@ -19,7 +19,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import tv.arka.app.data.ArkaConnect
 import tv.arka.app.data.PairingServer
+import tv.arka.app.data.Store
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Vod
 
@@ -122,6 +124,45 @@ fun VariantChips(vod: Vod, onOpen: (Vod) -> Unit) {
                 val label = variant.tags.ifBlank { "Version ${variants.indexOf(variant) + 1}" }
                 ArkaChip(label, variant.id == vod.id) { if (variant.id != vod.id) onOpen(variant) }
             }
+        }
+    }
+}
+
+/** "ArkaTV Connect" block of the settings: turns the phone remote on, and shows where to open it. */
+@Composable
+fun ConnectSettings() {
+    var enabled by remember { mutableStateOf(Store.connectEnabled) }
+    val address = remember(ArkaConnect.running) { PairingServer.localAddress().orEmpty() }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = ArkaTheme.margin).padding(bottom = ArkaSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(ArkaSpacing.sm),
+    ) {
+        Text("ArkaTV Connect", style = ArkaTheme.type.heading, fontWeight = FontWeight(700))
+        Text(
+            "Une télécommande dans le navigateur de votre téléphone : flèches, OK, Retour, lecture, et saisie de texte au clavier. " +
+                "Elle ne commande qu'ArkaTV, sur votre réseau local.",
+            color = ArkaColors.TextSecondary,
+            style = ArkaTheme.type.label,
+            fontWeight = FontWeight(400),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
+            ArkaChip(if (enabled) "Télécommande depuis un téléphone : oui" else "Télécommande depuis un téléphone : non", enabled) {
+                enabled = !enabled
+                Store.connectEnabled = enabled
+                if (enabled) ArkaConnect.start() else ArkaConnect.stop()
+            }
+        }
+        if (enabled && ArkaConnect.running && address.isNotEmpty()) {
+            Text(
+                "Ouvrez  http://$address:${ArkaConnect.port}  sur un appareil du même réseau, code  ${ArkaConnect.code}.",
+                style = ArkaTheme.type.body,
+            )
+        } else if (enabled) {
+            Text(
+                "La télécommande n'a pas pu démarrer : vérifiez que cet appareil est connecté à votre réseau local.",
+                color = ArkaColors.TextSecondary,
+                style = ArkaTheme.type.label,
+            )
         }
     }
 }

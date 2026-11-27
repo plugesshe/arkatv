@@ -70,6 +70,7 @@ import tv.arka.app.ui.Logo
 import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
+import tv.arka.app.data.ArkaConnect
 import tv.arka.app.data.Downloads
 import tv.arka.app.data.Recordings
 import tv.arka.app.ui.ParentalScreen
@@ -94,6 +95,7 @@ class MainActivity : ComponentActivity() {
         installImageLoader(applicationContext)
         Downloads.init()
         Recordings.init()
+        if (Store.connectEnabled) ArkaConnect.start()
         val television = isTelevision()
         setContent {
             ArkaTheme(isTv = television) {

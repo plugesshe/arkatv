@@ -127,6 +127,11 @@ object Store {
         get() = p().getString("active", null)
         set(value) = p().edit().putString("active", value).apply()
 
+    /** ArkaTV Connect: the remote-control page for a phone, on the local network. Off by default. */
+    var connectEnabled: Boolean
+        get() = p().getBoolean("connect", false)
+        set(value) = p().edit().putBoolean("connect", value).apply()
+
     /** Experimental: keep a paused live channel on disk so that it resumes where it stopped. */
     var livePause: Boolean
         get() = p().getBoolean("live_pause", false)

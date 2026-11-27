@@ -91,3 +91,12 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
   L'adresse du flux lui est passée en mémoire et n'est écrite nulle part ; seuls le titre et le chemin du
   fichier sont conservés.
 - Chaque chaîne enregistrée ou affichée en multi-écran ouvre sa propre connexion chez le fournisseur.
+
+## ArkaTV Connect
+
+- Désactivé par défaut. Une fois activé, un petit serveur HTTP écoute sur le réseau local tant que
+  l'application tourne. Il n'accepte que des touches et du texte, après saisie d'un code à quatre chiffres
+  tiré au hasard à chaque démarrage, et s'arrête après cinq codes faux.
+- Les touches sont injectées par l'application dans ses propres fenêtres : le système les refuse si une
+  autre application est à l'écran. Aucune autre commande n'existe (pas de fichiers, pas de réglages).
+- La page n'est pas chiffrée : à réserver à un réseau domestique.
