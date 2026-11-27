@@ -3,6 +3,11 @@
 package tv.arka.app.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -61,10 +66,10 @@ fun CategoryChips(selected: String, onSelect: (String) -> Unit) {
     val hidden = Repo.hiddenCategories
     val visible = Repo.liveCategories.filter { it.id !in hidden }
     LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
+        contentPadding = PaddingValues(horizontal = ArkaTheme.margin, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { ArkaChip("Favoris", selected == CATEGORY_FAVORITES) { onSelect(CATEGORY_FAVORITES) } }
+        item { ArkaChip("★ Favoris", selected == CATEGORY_FAVORITES) { onSelect(CATEGORY_FAVORITES) } }
         if (Repo.recentChannels.isNotEmpty()) {
             item { ArkaChip("Récentes", selected == CATEGORY_RECENT) { onSelect(CATEGORY_RECENT) } }
         }
@@ -141,28 +146,40 @@ fun channelsFor(
 @Composable
 fun LiveStatus() {
     Column(
-        Modifier.fillMaxWidth().padding(32.dp),
+        Modifier.fillMaxWidth().padding(ArkaSpacing.xxl),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         val error = Repo.error
         when {
             Repo.loading -> {
-                CircularProgressIndicator(color = ArkaRed)
-                Spacer(Modifier.height(12.dp))
-                Text("Chargement des chaînes…", color = ArkaMuted)
+                CircularProgressIndicator(color = ArkaColors.Red)
+                Spacer(Modifier.height(ArkaSpacing.md))
+                Text("Chargement des chaînes…", color = ArkaColors.TextSecondary)
             }
             error != null -> {
-                Text(error, color = ArkaError, textAlign = TextAlign.Center)
+                Text(error, color = ArkaColors.Error, textAlign = TextAlign.Center)
                 TextButton(onClick = { Repo.reload() }) { Text("Réessayer") }
             }
-            else -> Text("Aucune chaîne dans cette sélection.", color = ArkaMuted, textAlign = TextAlign.Center)
+            else -> Text("Aucune chaîne dans cette sélection.", color = ArkaColors.TextSecondary, textAlign = TextAlign.Center)
         }
     }
 }
 
+private fun groupLabel(category: String): String = when (category) {
+    CATEGORY_ALL -> "Toutes"
+    CATEGORY_FAVORITES -> "Favoris"
+    CATEGORY_RECENT -> "Récentes"
+    else -> Repo.liveCategories.firstOrNull { it.id == category }?.name.orEmpty()
+}
+
+/**
+ * Live TV. Handsets: groups as chips above the channel list. TV: three zones — groups, channels,
+ * and the programme details of the channel under focus.
+ */
 @Composable
 fun LiveScreen() {
     val context = LocalContext.current
+    val tv = LocalIsTv.current
     var category by rememberSaveable { mutableStateOf(CATEGORY_ALL) }
     val channels = Repo.channels
     val favorites = Repo.favorites
@@ -174,112 +191,239 @@ fun LiveScreen() {
         channelsFor(category, channels, favoriteOrder, recent, hidden, hiddenChannels)
     }
     var menuFor by remember { mutableStateOf<Channel?>(null) }
+    var focused by remember { mutableStateOf<Channel?>(null) }
     val now = rememberNow()
 
-    Column(Modifier.fillMaxSize()) {
-        Text(
-            "En direct",
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Black,
-            modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 8.dp),
-        )
-        CategoryChips(category) { category = it }
+    val rows: @Composable (Modifier) -> Unit = { modifier ->
         if (list.isEmpty()) {
-            LiveStatus()
+            Box(modifier) { LiveStatus() }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(vertical = 8.dp)) {
+            LazyColumn(modifier, contentPadding = PaddingValues(vertical = ArkaSpacing.sm)) {
                 items(list) { channel ->
                     ChannelRow(
                         channel = channel,
                         now = now,
                         favorite = channel.id in favorites,
                         onClick = { playChannel(context, list, channel) },
-                        onFavorite = { Repo.toggleFavorite(channel.id) },
                         onLongClick = { menuFor = channel },
+                        onFocused = { focused = channel },
                     )
                 }
             }
         }
     }
 
+    if (tv) {
+        Row(Modifier.fillMaxSize()) {
+            LazyColumn(
+                Modifier.width(160.dp).fillMaxHeight().background(ArkaColors.BackgroundAlt),
+                contentPadding = PaddingValues(horizontal = ArkaSpacing.sm, vertical = ArkaSpacing.lg),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                item {
+                    Text(
+                        "EN DIRECT",
+                        fontFamily = ArkaDisplayFont,
+                        fontWeight = FontWeight(800),
+                        style = ArkaTheme.type.title,
+                        modifier = Modifier.padding(start = ArkaSpacing.sm, bottom = ArkaSpacing.sm),
+                    )
+                }
+                item { GroupLine("★ Favoris", category == CATEGORY_FAVORITES) { category = CATEGORY_FAVORITES } }
+                if (recent.isNotEmpty()) {
+                    item { GroupLine("Récentes", category == CATEGORY_RECENT) { category = CATEGORY_RECENT } }
+                }
+                item { GroupLine("Toutes", category == CATEGORY_ALL) { category = CATEGORY_ALL } }
+                items(Repo.liveCategories.filter { it.id !in hidden }) { group ->
+                    GroupLine(group.name, category == group.id) { category = group.id }
+                }
+            }
+            Column(Modifier.weight(1f).fillMaxHeight()) {
+                Text(
+                    (groupLabel(category) + " · ${list.size} chaînes").uppercase(),
+                    color = ArkaColors.TextSecondary,
+                    style = ArkaTheme.type.mono,
+                    modifier = Modifier.padding(start = ArkaSpacing.lg, top = ArkaSpacing.lg),
+                )
+                rows(Modifier.fillMaxSize())
+            }
+            ChannelInfoPane(focused?.takeIf { it in list } ?: list.firstOrNull(), now)
+        }
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            ScreenHeader("Direct", onBack = null, trailing = list.size.toString())
+            CategoryChips(category) { category = it }
+            rows(Modifier.fillMaxSize())
+        }
+    }
+
     menuFor?.let { channel ->
         val favorite = channel.id in favorites
         val position = favoriteOrder.indexOf(channel.id)
-        AlertDialog(
-            onDismissRequest = { menuFor = null },
-            containerColor = ArkaSurface,
-            title = { Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-            text = {
-                Column {
-                    TextButton(onClick = { Repo.toggleFavorite(channel.id) }) {
-                        Text(if (favorite) "Retirer des favoris" else "Ajouter aux favoris")
-                    }
-                    if (favorite) {
-                        TextButton(enabled = position > 0, onClick = { Repo.moveFavorite(channel.id, -1) }) {
-                            Text("Monter dans les favoris")
-                        }
-                        TextButton(
-                            enabled = position in 0 until favoriteOrder.lastIndex,
-                            onClick = { Repo.moveFavorite(channel.id, 1) },
-                        ) { Text("Descendre dans les favoris") }
-                    }
-                    TextButton(onClick = {
-                        Repo.setChannelHidden(channel.id, true)
-                        menuFor = null
-                    }) { Text("Masquer cette chaîne") }
-                }
-            },
-            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("Fermer") } },
+        ArkaSheet(channel.name, onDismiss = { menuFor = null }) {
+            SheetOption(if (favorite) "Retirer des favoris" else "Ajouter aux favoris", false, onClick = { Repo.toggleFavorite(channel.id) })
+            if (favorite && position > 0) {
+                SheetOption("Monter dans les favoris", false, onClick = { Repo.moveFavorite(channel.id, -1) })
+            }
+            if (favorite && position in 0 until favoriteOrder.lastIndex) {
+                SheetOption("Descendre dans les favoris", false, onClick = { Repo.moveFavorite(channel.id, 1) })
+            }
+            SheetOption("Masquer cette chaîne", false, onClick = {
+                Repo.setChannelHidden(channel.id, true)
+                menuFor = null
+            })
+        }
+    }
+}
+
+@Composable
+private fun GroupLine(name: String, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().height(ArkaSize.tvControlMin)
+            .focusHighlight(ArkaRadius.sm, 1f)
+            .clip(RoundedCornerShape(ArkaRadius.sm))
+            .background(if (selected) ArkaColors.SurfaceHigh else ArkaColors.BackgroundAlt)
+            .clickable(onClick = onClick),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.width(3.dp).fillMaxHeight().background(if (selected) ArkaColors.Red else ArkaColors.BackgroundAlt))
+        Text(
+            name,
+            color = if (selected) ArkaColors.TextPrimary else ArkaColors.TextSecondary,
+            style = ArkaTheme.type.label,
+            fontWeight = if (selected) FontWeight(700) else FontWeight(500),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = ArkaSpacing.sm),
         )
     }
 }
 
+/** TV: what is on the channel under focus, and what comes next. No video preview is started. */
+@Composable
+private fun ChannelInfoPane(channel: Channel?, now: Long) {
+    if (channel == null) {
+        Spacer(Modifier.width(250.dp))
+        return
+    }
+    Column(Modifier.width(250.dp).fillMaxHeight().padding(ArkaSpacing.lg)) {
+        val programs = Repo.programs(channel.epgId)
+        val current = programs.firstOrNull { it.start <= now && now < it.end }
+        ChannelLogo(channel.logo, channel.name, Modifier.fillMaxWidth().height(110.dp))
+        Text(
+            current?.title ?: channel.name,
+            style = ArkaTheme.type.heading,
+            fontWeight = FontWeight(700),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = ArkaSpacing.md),
+        )
+        if (current != null) {
+            val left = ((current.end - now) / 60).coerceAtLeast(1)
+            Text(
+                formatClock(current.start) + " – " + formatClock(current.end) + " · reste $left min",
+                color = ArkaColors.TextSecondary,
+                style = ArkaTheme.type.mono,
+                modifier = Modifier.padding(top = ArkaSpacing.xs),
+            )
+            if (current.desc.isNotBlank()) {
+                Text(
+                    current.desc,
+                    color = ArkaColors.TextTertiary,
+                    style = ArkaTheme.type.body,
+                    maxLines = 5,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = ArkaSpacing.sm),
+                )
+            }
+            val next = programs.firstOrNull { it.start >= current.end }
+            if (next != null) {
+                Text(
+                    "Ensuite · " + formatClock(next.start),
+                    color = ArkaColors.TextSecondary,
+                    style = ArkaTheme.type.mono,
+                    modifier = Modifier.padding(top = ArkaSpacing.md),
+                )
+                Text(next.title, style = ArkaTheme.type.label, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+        } else {
+            Text(
+                "Guide indisponible pour cette chaîne.",
+                color = ArkaColors.TextSecondary,
+                style = ArkaTheme.type.body,
+                modifier = Modifier.padding(top = ArkaSpacing.xs),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Text("OK : regarder · appui long : favori, masquer", color = ArkaColors.TextDisabled, style = ArkaTheme.type.mono)
+    }
+}
+
+/**
+ * Channel line: number, logo, then the programme on air with its progress and end time.
+ * Without guide data the channel name takes the programme's place.
+ */
 @Composable
 fun ChannelRow(
     channel: Channel,
     now: Long,
     favorite: Boolean,
     onClick: () -> Unit,
-    onFavorite: () -> Unit,
     onLongClick: (() -> Unit)? = null,
+    onFocused: (() -> Unit)? = null,
 ) {
+    val tv = LocalIsTv.current
     val program = Repo.nowPlaying(channel.epgId, now)
     Row(
-        Modifier.fillMaxWidth().focusHighlight(scale = 1f)
+        Modifier.fillMaxWidth()
+            .padding(horizontal = if (tv) ArkaSpacing.sm else 0.dp)
+            .focusHighlight(ArkaRadius.sm, 1f)
+            .onFocusChanged { if (it.isFocused) onFocused?.invoke() }
+            .clip(RoundedCornerShape(ArkaRadius.sm))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+            .padding(horizontal = if (tv) ArkaSpacing.sm else ArkaTheme.margin, vertical = if (tv) 6.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        ChannelLogo(channel.logo, channel.name, Modifier.size(width = 64.dp, height = 44.dp))
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
+        Text(
+            channel.number.toString(),
+            color = ArkaColors.TextSecondary,
+            style = ArkaTheme.type.mono,
+            maxLines = 1,
+            modifier = Modifier.width(if (tv) 30.dp else 36.dp),
+        )
+        ChannelLogo(channel.logo, channel.name, Modifier.size(width = if (tv) 44.dp else 52.dp, height = if (tv) 28.dp else 34.dp))
+        Column(Modifier.weight(1f).padding(start = ArkaSpacing.md)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(channel.number.toString(), color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(end = 8.dp))
-                Text(channel.name, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-            if (program != null) {
                 Text(
-                    program.title,
-                    color = ArkaMuted,
-                    fontSize = 12.sp,
+                    program?.title ?: channel.name,
+                    style = ArkaTheme.type.label,
+                    fontSize = if (tv) 12.sp else 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
-                val span = (program.end - program.start).coerceAtLeast(1)
-                LinearProgressIndicator(
-                    progress = { ((now - program.start).toFloat() / span).coerceIn(0f, 1f) },
-                    color = ArkaRed,
-                    trackColor = ArkaCard,
-                    modifier = Modifier.padding(top = 4.dp).fillMaxWidth().height(2.dp),
-                )
+                if (favorite) {
+                    Text(" ★", color = ArkaColors.TextSecondary, fontSize = 11.sp)
+                }
             }
-        }
-        IconButton(onClick = onFavorite) {
-            Icon(
-                if (favorite) Icons.Filled.Star else Icons.Filled.StarBorder,
-                contentDescription = "Favori",
-                tint = if (favorite) ArkaRed else ArkaMuted,
-            )
+            if (program != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                    val span = (program.end - program.start).coerceAtLeast(1)
+                    LinearProgressIndicator(
+                        progress = { ((now - program.start).toFloat() / span).coerceIn(0f, 1f) },
+                        color = ArkaColors.Red,
+                        trackColor = ArkaColors.Border,
+                        modifier = Modifier.weight(1f).height(2.dp),
+                    )
+                    Text(
+                        formatClock(program.end),
+                        color = ArkaColors.TextSecondary,
+                        style = ArkaTheme.type.mono,
+                        modifier = Modifier.padding(start = ArkaSpacing.sm),
+                    )
+                }
+                Text(channel.name, color = ArkaColors.TextSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }

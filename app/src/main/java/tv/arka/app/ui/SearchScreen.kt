@@ -221,7 +221,6 @@ fun SearchScreen(onOpen: (Vod) -> Unit) {
                                 recordSearch()
                                 playChannel(context, channels.toList(), channel)
                             },
-                            onFavorite = { Repo.toggleFavorite(channel.id) },
                         )
                     }
                     if (moreChannels) {

@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 10).
+- Version : `0.2.0-dev` (versionCode 11).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -63,7 +63,9 @@ pour lecture ; aucune comparaison visuelle avec l'application n'a pu être faite
 | Navigation | barre inférieure mobile et barre latérale TV refaites |
 | Écrans 1 — Écran de démarrage, ajout et gestion des sources | à faire |
 | Écrans 2 — Fiches film et série | refait (mobile et TV) : reprise avec temps restant, recommencer, vu / non vu, suivre une série, saisons, épisodes avec durée et état, prochain épisode pertinent, contenus similaires ; sans téléchargement ni bande-annonce (inexistants) |
-| Écrans 3 — Direct et guide | à faire |
+| Écrans 3 — Direct | refait : ligne de chaîne (numéro, logo, programme, avancement, heure de fin), TV en trois zones (groupes, chaînes, détail du programme) ; sans aperçu vidéo, mini-lecteur ni groupes personnalisés |
+| Écrans 3 — Guide TV | refait : ligne « maintenant », passé atténué, programme en cours mis en avant, retour à maintenant, détail en feuille (mobile) ou en tête d'écran (TV) ; sans navigation par jour, replay ni enregistrement |
+| Écrans 3 — Multiview | fonctionnalité inexistante |
 | Écrans 4 — Lecteur | à faire |
 | Écrans 5 — Recherche et Mon espace | à faire |
 | Écrans 6 — Appareils (Cast, Connect) | fonctionnalités inexistantes |

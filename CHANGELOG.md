@@ -72,6 +72,12 @@
   durée et état de chaque épisode, « Suivre » (rangée « Séries suivies » sur l'accueil).
 - Rangée « Contenus similaires ».
 
+### Direct et guide TV
+- Liste des chaînes redessinée : numéro, logo, programme en cours, avancement et heure de fin.
+- Android TV : espace Direct en trois zones (groupes, chaînes, détail du programme sous le focus).
+- Guide TV : ligne rouge « maintenant », programmes passés atténués, bouton de retour à maintenant,
+  détail du programme en feuille (mobile) ou en tête d'écran (TV).
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.

@@ -56,6 +56,13 @@ un vrai téléphone et une vraie Android TV.
 - [ ] « Contenus similaires » ouvre une autre fiche ; retour revient à la première.
 - [ ] TV : focus initial sur le bouton rouge ; série en deux colonnes.
 
+### Direct et guide (nouveau design)
+- [ ] Direct mobile : numéro, logo, programme, barre d'avancement, heure de fin ; appui long = feuille d'actions.
+- [ ] Direct TV : groupes à gauche, chaînes au centre, détail à droite qui suit le focus.
+- [ ] Guide : ligne rouge alignée sur l'heure dans toutes les rangées ; « Maintenant » y ramène.
+- [ ] Guide : programmes passés atténués ; toucher un programme ouvre son détail ; en cours = lecture.
+- [ ] Guide TV : le détail en tête suit le focus.
+
 ### Recherche
 - [ ] « heritiers » trouve « Les Héritiers du Vent » ; deux mots dans le désordre fonctionnent.
 - [ ] Une recherche large charge la suite en faisant défiler les affiches ; « Afficher plus de chaînes ».
