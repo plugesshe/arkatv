@@ -29,7 +29,9 @@ ui/ (Compose)  ──lit──>  Repo (état applicatif, snapshot state Compose)
 ## Flux de données au démarrage (offline-first)
 
 1. `Store.init` déchiffre les sources ; `Repo.select` charge favoris, liste et progression.
-2. `CatalogStore.load` relit le dernier catalogue valide et le guide : l'interface est utilisable sans réseau.
+2. `CatalogStore.loadSummary` relit les chaînes, les catégories non vides, les compteurs et les rangées
+   « récemment ajoutés », puis le guide : l'interface est utilisable sans réseau. Les films et séries
+   sont ensuite lus à la demande (`vodPage`, `search*`).
 3. Si le cache est vide, périmé (12 h) ou si l'utilisateur le demande, le catalogue est rechargé en
    arrière-plan puis enregistré en une transaction.
 4. Un échec de rechargement laisse le cache en place (`Repo.syncError`) ; seule l'absence totale de
@@ -46,7 +48,8 @@ ui/ (Compose)  ──lit──>  Repo (état applicatif, snapshot state Compose)
 ## Dette connue
 
 - `Repo` est un singleton à état Compose, sans ViewModel ni injection de dépendances.
-- Le catalogue est encore entièrement chargé en mémoire après lecture du cache : pas de pagination.
+- Les chaînes et le guide sont entièrement en mémoire ; les films et séries sont lus par pages.
+- Pendant une actualisation, le catalogue complet passe par la mémoire avant d'être écrit en base.
 - Les chaînes d'interface sont codées en français dans le code (pas de ressources de traduction).
 - La même interface sert le téléphone et la TV.
 

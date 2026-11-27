@@ -62,7 +62,7 @@ import tv.arka.app.data.XtreamApi
 import java.util.UUID
 
 @Composable
-fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onGrid: (String, List<Vod>) -> Unit) {
+fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (String, List<Vod>) -> Unit) {
     var liveFormat by remember { mutableStateOf(Store.liveFormat) }
     var toDelete by remember { mutableStateOf<Source?>(null) }
 
@@ -112,7 +112,7 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onGrid: (Strin
         val status = when {
             Repo.loading -> "Chargement en cours…"
             Repo.error != null -> "Erreur : ${Repo.error}"
-            else -> "${Repo.channels.size} chaînes · ${Repo.movies.size} films · ${Repo.series.size} séries" +
+            else -> "${Repo.channels.size} chaînes · ${Repo.movieCount} films · ${Repo.seriesCount} séries" +
                 if (Repo.epgLoading) " · guide en cours de mise à jour" else " · guide : ${Repo.epg.size} chaînes"
         }
         Text(status, color = ArkaMuted, fontSize = 12.sp, modifier = Modifier.padding(horizontal = 16.dp))
@@ -134,7 +134,7 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onGrid: (Strin
         }
 
         if (Repo.myList.isNotEmpty()) {
-            VodRow("Ma liste", Repo.myList, onOpen) { onGrid("Ma liste", Repo.myList) }
+            VodRow("Ma liste", Repo.myList, onOpen) { onList("Ma liste", Repo.myList) }
         }
 
         SectionTitle("Réglages")

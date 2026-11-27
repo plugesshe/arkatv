@@ -31,6 +31,13 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Ajout M3U ; suppression d'une source ; bascule entre deux sources.
 - [ ] Changement de format MPEG-TS / HLS : effet immédiat, sans rechargement.
 
+### Catalogue
+- [ ] L'accueil affiche les rangées par catégorie au fil du défilement, sans catégorie vide.
+- [ ] « Tout voir » ouvre la grille ; faire défiler charge la suite jusqu'au bout de la catégorie.
+- [ ] Chaque tri (défaut, ajouts récents, A – Z, année, note) réordonne la grille.
+- [ ] Ouvrir une fiche depuis le milieu d'une grille puis revenir : même position, même tri.
+- [ ] Ouvrir une fiche depuis le bas de l'accueil puis revenir : même position.
+
 ### Recherche
 - [ ] « heritiers » trouve « Les Héritiers du Vent » ; deux mots dans le désordre fonctionnent.
 - [ ] Une recherche large charge la suite en faisant défiler les affiches ; « Afficher plus de chaînes ».

@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 3).
+- Version : `0.2.0-dev` (versionCode 4).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -24,20 +24,23 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 35 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Tests unitaires | 38 tests, 7 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
 | Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
+| Films et séries lus par pages depuis la base (accueil, grilles), tris dans les grilles, position conservée au retour d'une fiche | fait, non testé sur appareil | `CatalogStore.loadSummary` / `vodPage`, `ui/CatalogGridScreen.kt`, `MainActivity.kt` |
 | Recherche sur le catalogue stocké : sans accents, classée, paginée, historique local | fait, non testé sur appareil | `data/TextNormalizer.kt`, `CatalogStore.search*`, `ui/SearchScreen.kt` |
 | Lint et tests en CI, « latest » protégée | fait | `.github/workflows/build.yml` |
 
 ## Reste à faire en P0
 
 1. Validation manuelle sur téléphone et Android TV de tout le tableau ci-dessus.
-2. Pagination des listes et grilles (Paging 3) : hors recherche, le catalogue est encore chargé
-   entièrement en mémoire pour l'accueil, les grilles, le direct et le guide.
-3. Interface Android TV dédiée (barre latérale, focus initial, restauration du focus).
-4. Chaînes d'interface en ressources, français et anglais.
-5. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
-6. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
+2. Interface Android TV dédiée (barre latérale, focus initial, restauration du focus).
+3. Chaînes d'interface en ressources, français et anglais.
+4. Synchronisation en flux : pendant une actualisation, le catalogue complet transite encore en
+   mémoire avant d'être écrit en base (pic mémoire sur les très grosses sources).
+5. Chaînes et guide : toujours entièrement en mémoire (acceptable jusqu'à quelques dizaines de milliers
+   de chaînes ; à mesurer).
+6. Recherche : tolérance aux fautes de frappe, programmes du guide, acteurs et genres, filtres.
+7. Tests de migration Room (schéma exporté) quand le schéma devra être conservé ; tests UI Compose.
 
 ## Décisions prises
 
@@ -53,6 +56,11 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 - **Recherche par `LIKE` sur une colonne normalisée** plutôt que FTS : suffisant pour des noms courts,
   sans index à maintenir, et vérifiable par des tests sur base en mémoire. À réévaluer par la mesure sur
   une source de 100 000 titres.
+- **Pagination manuelle (limite / décalage)** plutôt que la bibliothèque Paging : même mécanisme que la
+  recherche, peu de code, testé sur base en mémoire. Les pages déjà parcourues restent en mémoire tant
+  que l'écran est dans la pile de navigation.
+- **État des écrans conservé dans la pile de navigation** (`SaveableStateHolder` + `CatalogGridState`) :
+  revenir d'une fiche retrouve la grille, son tri et sa position.
 - **Lint** : la fiche détaillée charge ses données avec `LaunchedEffect` ; `produceState` y déclenchait un
   faux positif de la règle `ProduceStateDoesNotAssignValue`.
 
@@ -72,8 +80,8 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 ## Prochaine action
 
-Faire valider le build sur appareil, puis attaquer le point 2 (pagination des listes et grilles) avant
-toute refonte d'écran de P1.
+Faire valider le build sur appareil. Ensuite : interface Android TV dédiée (point 2), en s'appuyant sur
+les maquettes Claude Design que l'utilisateur prépare pour mobile et TV, puis refonte des écrans de P1.
 
 ## Extension multimédia (téléchargements, PVR, timeshift, Cast, ArkaTV Connect)
 

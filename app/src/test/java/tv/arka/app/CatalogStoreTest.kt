@@ -21,6 +21,7 @@ import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
 import tv.arka.app.data.VodKind
+import tv.arka.app.data.VodSort
 import tv.arka.app.data.db.ArkaDatabase
 import tv.arka.app.data.db.CatalogStore
 import tv.arka.app.data.security.SecretBox
@@ -33,8 +34,14 @@ class CatalogStoreTest {
     private val xtream = Source("x", "xtream", "Xtream", "http://host.test:8080", "alice", "s3cret")
     private val m3u = Source("m", "m3u", "Liste", "http://host.test/list.m3u")
 
-    private fun movie(id: String, name: String) =
-        Vod(id, VodKind.MOVIE, name, "", "c1", "http://host.test:8080/movie/alice/s3cret/$id.mkv", "7.5", 10, "", "2020")
+    private fun movie(
+        id: String,
+        name: String,
+        category: String = "c1",
+        added: Long = 10,
+        year: String = "2020",
+        rating: String = "7.5",
+    ) = Vod(id, VodKind.MOVIE, name, "", category, "http://host.test:8080/movie/alice/s3cret/$id.mkv", rating, added, "", year)
 
     private val catalog = Catalog(
         liveCategories = listOf(Category("l1", "Généralistes")),
@@ -42,12 +49,12 @@ class CatalogStoreTest {
             Channel("1", "One HD", "", "l1", "one.fr", "http://host.test:8080/live/alice/s3cret/1.ts", 1),
             Channel("2", "Héritage TV", "", "l1", "", "http://host.test:8080/live/alice/s3cret/2.ts", 2),
         ),
-        vodCategories = listOf(Category("c1", "Drame")),
+        vodCategories = listOf(Category("c1", "Drame"), Category("c2", "Action"), Category("c3", "Vide")),
         movies = listOf(
-            movie("10", "Les Héritiers du Vent"),
-            movie("11", "Héritage"),
-            movie("12", "Le Dernier Convoi"),
-            movie("13", "L'Héritier"),
+            movie("10", "Les Héritiers du Vent", added = 40, year = "2021", rating = "8.1"),
+            movie("11", "Héritage", added = 10, year = "2019", rating = "6.0"),
+            movie("12", "Le Dernier Convoi", added = 30, year = "2023", rating = "9.2"),
+            movie("13", "L'Héritier", category = "c2", added = 20, year = "", rating = ""),
         ),
         seriesCategories = listOf(Category("s1", "Séries")),
         series = listOf(Vod("20", VodKind.SERIES, "Ombres de Verre", "", "s1", "", "", 5, "Résumé", "2022")),
@@ -160,6 +167,44 @@ class CatalogStoreTest {
         assertEquals(listOf("En cours"), store.loadEpg("x", 250).getValue("one.fr").map { it.title })
         store.delete("x")
         assertTrue(store.loadEpg("x", 0).isEmpty())
+    }
+
+    @Test
+    fun summaryKeepsOnlyWhatTheInterfaceHoldsInMemory() = runBlocking {
+        assertNull(store.loadSummary(xtream, "ts", 20))
+        store.save(xtream, catalog)
+        val summary = store.loadSummary(xtream, "ts", 2)!!
+        assertEquals(4, summary.movieCount)
+        assertEquals(1, summary.seriesCount)
+        assertEquals(2, summary.channels.size)
+        // The empty category is not offered.
+        assertEquals(listOf("Drame", "Action"), summary.vodCategories.map { it.name })
+        assertEquals(listOf("Séries"), summary.seriesCategories.map { it.name })
+        assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi"), summary.latestMovies.map { it.name })
+        assertEquals(listOf("Ombres de Verre"), summary.latestSeries.map { it.name })
+    }
+
+    @Test
+    fun pagesCanBeSortedInEveryOfferedOrder() = runBlocking {
+        store.save(xtream, catalog)
+        suspend fun names(sort: VodSort) = store.vodPage(xtream, VodKind.MOVIE, null, sort, 10, 0).map { it.name }
+        assertEquals(listOf("Les Héritiers du Vent", "Héritage", "Le Dernier Convoi", "L'Héritier"), names(VodSort.PROVIDER))
+        assertEquals(listOf("Héritage", "L'Héritier", "Le Dernier Convoi", "Les Héritiers du Vent"), names(VodSort.NAME))
+        assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi", "L'Héritier", "Héritage"), names(VodSort.RECENT))
+        assertEquals(listOf("Le Dernier Convoi", "Les Héritiers du Vent", "Héritage", "L'Héritier"), names(VodSort.YEAR))
+        assertEquals(listOf("Le Dernier Convoi", "Les Héritiers du Vent", "Héritage", "L'Héritier"), names(VodSort.RATING))
+    }
+
+    @Test
+    fun pagesAreLimitedToACategoryAndPaginated() = runBlocking {
+        store.save(xtream, catalog)
+        assertEquals(listOf("L'Héritier"), store.vodPage(xtream, VodKind.MOVIE, "c2", VodSort.PROVIDER, 10, 0).map { it.name })
+        assertTrue(store.vodPage(xtream, VodKind.MOVIE, "c3", VodSort.PROVIDER, 10, 0).isEmpty())
+        val first = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, 3, 0)
+        val second = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, 3, 3)
+        assertEquals(3, first.size)
+        assertEquals(listOf("L'Héritier"), second.map { it.name })
+        assertEquals("http://host.test:8080/movie/alice/s3cret/13.mkv", second[0].url)
     }
 
     private suspend fun search(text: String): List<String> =

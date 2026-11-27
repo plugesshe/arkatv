@@ -22,10 +22,11 @@ version d'Android et la taille de la source.
 
 ## Limites connues
 
-- Après lecture du cache, tout le catalogue est en mémoire : sur une source de 100 000 films, le temps
-  de lecture et la mémoire resteront élevés. La correction est la pagination en base (P0 restant).
-- Les URLs des playlists M3U sont déchiffrées une à une au chargement du cache.
-- L'accueil regroupe et trie les listes en mémoire à chaque changement de catalogue.
+- Les films et séries ne sont plus chargés en mémoire : l'accueil lit 20 titres par rangée à l'affichage,
+  les grilles 60 par page. Les chaînes et le guide restent entièrement en mémoire.
+- Pendant une actualisation, le catalogue complet transite encore en mémoire avant écriture en base.
+- Les URLs des chaînes M3U sont déchiffrées une à une au chargement du cache ; celles des films M3U,
+  page par page.
 - La recherche interroge la base par `LIKE` sur une colonne normalisée : chaque requête parcourt la
   table de la source. Temps non mesuré sur gros volume.
 - Volumes cibles (20 000 chaînes, 100 000 films, 30 000 séries) : aucun test de charge exécuté.

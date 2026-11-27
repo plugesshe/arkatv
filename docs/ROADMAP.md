@@ -14,7 +14,9 @@ est dans `PROGRESS.md`.
 - ⬜ Chaînes d'interface en ressources (français, anglais)
 - ✅ Signature stable des builds de debug
 - ✅ Recherche sur le catalogue stocké : insensible aux accents, classée par pertinence, paginée, historique local
-- ⬜ Pagination des listes et grilles (Paging)
+- ✅ Films et séries lus par pages depuis la base ; tris (défaut, récents, A–Z, année, note) dans les grilles
+- ✅ Position et filtres conservés au retour d'une fiche
+- ⬜ Synchronisation en flux (sans catalogue complet en mémoire pendant l'actualisation)
 
 ## P1 — Refonte premium
 

@@ -10,6 +10,7 @@ import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
 import tv.arka.app.data.VodKind
+import tv.arka.app.data.VodSort
 import tv.arka.app.data.XtreamApi
 import tv.arka.app.data.security.SecretBox
 
@@ -149,7 +150,73 @@ class CatalogStore(private val database: ArkaDatabase) {
         val kindName = if (kind == VodKind.MOVIE) MOVIE else SERIES
         val query = searchQuery("vods", source.id, kindName, normalized, limit, offset) ?: return emptyList()
         val api = apiOf(source)
-        return dao.searchVods(query).map { vodOf(it, kind, api) }
+        return dao.queryVods(query).map { vodOf(it, kind, api) }
+    }
+
+    /** What the interface keeps in memory: channels, categories and a few rows. Films and series stay in the database. */
+    class Summary(
+        val liveCategories: List<Category>,
+        val channels: List<Channel>,
+        val vodCategories: List<Category>,
+        val seriesCategories: List<Category>,
+        val movieCount: Int,
+        val seriesCount: Int,
+        val latestMovies: List<Vod>,
+        val latestSeries: List<Vod>,
+    )
+
+    /** Returns null when nothing was ever cached for this source. Empty categories are left out. */
+    suspend fun loadSummary(source: Source, liveFormat: String, rowSize: Int): Summary? {
+        val channelRows = dao.channels(source.id)
+        val movieCount = dao.countVods(source.id, MOVIE)
+        val seriesCount = dao.countVods(source.id, SERIES)
+        if (channelRows.isEmpty() && movieCount == 0 && seriesCount == 0) return null
+        val categories = dao.categories(source.id).groupBy { it.kind }
+        val api = apiOf(source)
+        fun cats(kind: String, used: Set<String>?): List<Category> = categories[kind].orEmpty()
+            .filter { used == null || it.categoryId in used }
+            .map { Category(it.categoryId, it.name) }
+        return Summary(
+            liveCategories = cats(LIVE, null),
+            channels = channelRows.map { channelOf(it, api, liveFormat) },
+            vodCategories = cats(MOVIE, dao.usedCategories(source.id, MOVIE).toSet()),
+            seriesCategories = cats(SERIES, dao.usedCategories(source.id, SERIES).toSet()),
+            movieCount = movieCount,
+            seriesCount = seriesCount,
+            latestMovies = vodPage(source, VodKind.MOVIE, null, VodSort.RECENT, rowSize, 0),
+            latestSeries = vodPage(source, VodKind.SERIES, null, VodSort.RECENT, rowSize, 0),
+        )
+    }
+
+    /** One page of films or series, optionally limited to a category. */
+    suspend fun vodPage(
+        source: Source,
+        kind: VodKind,
+        categoryId: String?,
+        sort: VodSort,
+        limit: Int,
+        offset: Int,
+    ): List<Vod> {
+        val sql = StringBuilder("SELECT * FROM vods WHERE sourceId = ? AND kind = ?")
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(if (kind == VodKind.MOVIE) MOVIE else SERIES)
+        if (categoryId != null) {
+            sql.append(" AND categoryId = ?")
+            args.add(categoryId)
+        }
+        val order = when (sort) {
+            VodSort.PROVIDER -> "pos"
+            VodSort.NAME -> "search, pos"
+            VodSort.RECENT -> "addedAt DESC, pos"
+            VodSort.YEAR -> "year DESC, pos"
+            VodSort.RATING -> "CAST(rating AS REAL) DESC, pos"
+        }
+        sql.append(" ORDER BY ").append(order).append(" LIMIT ? OFFSET ?")
+        args.add(limit)
+        args.add(offset)
+        val api = apiOf(source)
+        return dao.queryVods(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).map { vodOf(it, kind, api) }
     }
 
     /**

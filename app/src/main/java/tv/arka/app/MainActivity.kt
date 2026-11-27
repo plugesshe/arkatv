@@ -26,6 +26,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,12 +34,16 @@ import androidx.compose.ui.unit.sp
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Store
 import tv.arka.app.data.Vod
+import tv.arka.app.data.VodKind
+import tv.arka.app.data.VodSort
 import tv.arka.app.ui.AddSourceScreen
 import tv.arka.app.ui.ArkaBg
 import tv.arka.app.ui.ArkaMuted
 import tv.arka.app.ui.ArkaRed
 import tv.arka.app.ui.ArkaSurface
 import tv.arka.app.ui.ArkaTheme
+import tv.arka.app.ui.CatalogGridScreen
+import tv.arka.app.ui.CatalogGridState
 import tv.arka.app.ui.DetailScreen
 import tv.arka.app.ui.GridScreen
 import tv.arka.app.ui.GuideScreen
@@ -66,14 +71,30 @@ private sealed interface Screen {
     data object Main : Screen
     data object AddSource : Screen
     data class Detail(val vod: Vod) : Screen
-    data class Grid(val title: String, val items: List<Vod>) : Screen
+
+    /** A category (or a whole kind) browsed page by page; [state] keeps its items and scroll position. */
+    class Catalog(
+        val title: String,
+        val kind: VodKind,
+        val categoryId: String?,
+        val state: CatalogGridState,
+    ) : Screen
+
+    data class StaticGrid(val title: String, val items: List<Vod>) : Screen
 }
 
 @Composable
 private fun App() {
     val stack = remember { mutableStateListOf<Screen>(Screen.Main) }
     var tab by rememberSaveable { mutableIntStateOf(0) }
-    val pop = { if (stack.size > 1) stack.removeAt(stack.lastIndex) }
+    // Keeps each screen's saved state (scroll positions, selected filters) while another one is on top.
+    val holder = rememberSaveableStateHolder()
+    val pop: () -> Unit = {
+        if (stack.size > 1) {
+            holder.removeState("screen-${stack.lastIndex}")
+            stack.removeAt(stack.lastIndex)
+        }
+    }
 
     if (Repo.sources.isEmpty()) {
         AddSourceScreen(onBack = null, onDone = {})
@@ -85,17 +106,31 @@ private fun App() {
 
     val openVod: (Vod) -> Unit = { stack.add(Screen.Detail(it)) }
 
-    when (val screen = stack.last()) {
-        Screen.Main -> MainTabs(
-            tab = tab,
-            onTab = { tab = it },
-            onOpen = openVod,
-            onGrid = { title, items -> stack.add(Screen.Grid(title, items)) },
-            onAddSource = { stack.add(Screen.AddSource) },
-        )
-        Screen.AddSource -> AddSourceScreen(onBack = { pop() }, onDone = { pop() })
-        is Screen.Detail -> DetailScreen(screen.vod, onBack = { pop() })
-        is Screen.Grid -> GridScreen(screen.title, screen.items, onBack = { pop() }, onOpen = openVod)
+    val index = stack.lastIndex
+    holder.SaveableStateProvider("screen-$index") {
+        when (val screen = stack[index]) {
+            Screen.Main -> MainTabs(
+                tab = tab,
+                onTab = { tab = it },
+                onOpen = openVod,
+                onCatalog = { title, kind, categoryId, sort ->
+                    stack.add(Screen.Catalog(title, kind, categoryId, CatalogGridState(sort)))
+                },
+                onList = { title, items -> stack.add(Screen.StaticGrid(title, items)) },
+                onAddSource = { stack.add(Screen.AddSource) },
+            )
+            Screen.AddSource -> AddSourceScreen(onBack = pop, onDone = pop)
+            is Screen.Detail -> DetailScreen(screen.vod, onBack = pop)
+            is Screen.Catalog -> CatalogGridScreen(
+                title = screen.title,
+                kind = screen.kind,
+                categoryId = screen.categoryId,
+                state = screen.state,
+                onBack = pop,
+                onOpen = openVod,
+            )
+            is Screen.StaticGrid -> GridScreen(screen.title, screen.items, onBack = pop, onOpen = openVod)
+        }
     }
 }
 
@@ -104,7 +139,8 @@ private fun MainTabs(
     tab: Int,
     onTab: (Int) -> Unit,
     onOpen: (Vod) -> Unit,
-    onGrid: (String, List<Vod>) -> Unit,
+    onCatalog: (String, VodKind, String?, VodSort) -> Unit,
+    onList: (String, List<Vod>) -> Unit,
     onAddSource: () -> Unit,
 ) {
     val tabs = listOf(
@@ -138,11 +174,11 @@ private fun MainTabs(
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
             when (tab) {
-                0 -> HomeScreen(onOpen = onOpen, onGrid = onGrid)
+                0 -> HomeScreen(onOpen = onOpen, onCatalog = onCatalog)
                 1 -> LiveScreen()
                 2 -> GuideScreen()
                 3 -> SearchScreen(onOpen = onOpen)
-                else -> ProfileScreen(onAddSource = onAddSource, onOpen = onOpen, onGrid = onGrid)
+                else -> ProfileScreen(onAddSource = onAddSource, onOpen = onOpen, onList = onList)
             }
         }
     }

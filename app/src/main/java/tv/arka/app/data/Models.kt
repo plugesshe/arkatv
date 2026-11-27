@@ -24,6 +24,9 @@ data class Channel(
 
 enum class VodKind { MOVIE, SERIES }
 
+/** Orders offered when browsing films or series. PROVIDER keeps the order sent by the source. */
+enum class VodSort { PROVIDER, NAME, RECENT, YEAR, RATING }
+
 data class Vod(
     val id: String,
     val kind: VodKind,

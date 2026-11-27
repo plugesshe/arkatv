@@ -51,10 +51,15 @@ object Repo {
 
     var liveCategories by mutableStateOf(listOf<Category>())
     var channels by mutableStateOf(listOf<Channel>())
+
+    // Films and series stay in the database: only counts, non-empty categories and the
+    // "recently added" rows are kept in memory. Everything else is read page by page.
     var vodCategories by mutableStateOf(listOf<Category>())
-    var movies by mutableStateOf(listOf<Vod>())
     var seriesCategories by mutableStateOf(listOf<Category>())
-    var series by mutableStateOf(listOf<Vod>())
+    var movieCount by mutableIntStateOf(0)
+    var seriesCount by mutableIntStateOf(0)
+    var latestMovies by mutableStateOf(listOf<Vod>())
+    var latestSeries by mutableStateOf(listOf<Vod>())
     var epg by mutableStateOf(mapOf<String, List<Program>>())
 
     var favorites by mutableStateOf(setOf<String>())
@@ -67,6 +72,7 @@ object Repo {
     private var generation = 0
     private var loadedSourceId: String? = null
     private val detailsCache = HashMap<String, VodDetails>()
+    private val rowCache = HashMap<String, List<Vod>>()
 
     fun init(context: Context) {
         if (initialised) return
@@ -126,21 +132,24 @@ object Repo {
     }
 
     private fun clear() {
-        apply(Catalog())
+        apply(null)
         epg = emptyMap()
+    }
+
+    private fun apply(summary: CatalogStore.Summary?) {
+        liveCategories = summary?.liveCategories.orEmpty()
+        channels = summary?.channels.orEmpty()
+        vodCategories = summary?.vodCategories.orEmpty()
+        seriesCategories = summary?.seriesCategories.orEmpty()
+        movieCount = summary?.movieCount ?: 0
+        seriesCount = summary?.seriesCount ?: 0
+        latestMovies = summary?.latestMovies.orEmpty()
+        latestSeries = summary?.latestSeries.orEmpty()
+        rowCache.clear()
         detailsCache.clear()
     }
 
-    private fun apply(catalog: Catalog) {
-        liveCategories = catalog.liveCategories
-        channels = catalog.channels
-        vodCategories = catalog.vodCategories
-        movies = catalog.movies
-        seriesCategories = catalog.seriesCategories
-        series = catalog.series
-    }
-
-    private fun hasContent(): Boolean = channels.isNotEmpty() || movies.isNotEmpty() || series.isNotEmpty()
+    private fun hasContent(): Boolean = channels.isNotEmpty() || movieCount > 0 || seriesCount > 0
 
     private fun open(source: Source, force: Boolean) {
         loadJob?.cancel()
@@ -155,16 +164,16 @@ object Repo {
         refreshing = false
         epgLoading = false
         loading = !hasContent()
-        val catalogStore = store
+        val catalogStore = store ?: return
 
         loadJob = scope.launch {
             val now = System.currentTimeMillis()
 
             // 1. Cached catalogue and guide first: the interface is usable without the network.
-            if (switching && catalogStore != null) {
+            if (switching) {
                 try {
                     val format = Store.liveFormat
-                    val cached = withContext(Dispatchers.IO) { catalogStore.load(source, format) }
+                    val cached = withContext(Dispatchers.IO) { catalogStore.loadSummary(source, format, ROW_SIZE) }
                     if (cached != null) {
                         apply(cached)
                         catalogVersion++
@@ -186,15 +195,15 @@ object Repo {
             if (force || !hasCache || now - lastSync > CATALOG_TTL_MS) {
                 refreshing = hasCache
                 try {
-                    val fetched = fetch(source)
+                    val discoveredEpgUrl = sync(source, catalogStore)
+                    val format = Store.liveFormat
+                    val fresh = withContext(Dispatchers.IO) { catalogStore.loadSummary(source, format, ROW_SIZE) }
                     if (mine != generation) return@launch
-                    apply(fetched.catalog)
-                    detailsCache.clear()
+                    apply(fresh)
+                    catalogVersion++
                     lastSync = now
                     Store.setLastSync(source.id, now)
-                    if (fetched.epgUrl.isNotBlank()) Store.setDiscoveredEpgUrl(source.id, fetched.epgUrl)
-                    withContext(Dispatchers.IO) { catalogStore?.save(source, fetched.catalog) }
-                    if (mine == generation) catalogVersion++
+                    if (discoveredEpgUrl.isNotBlank()) Store.setDiscoveredEpgUrl(source.id, discoveredEpgUrl)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -244,6 +253,16 @@ object Repo {
     }
 
     private class Fetched(val catalog: Catalog, val epgUrl: String)
+
+    /**
+     * Downloads the catalogue and stores it in one transaction. The full lists only live for the
+     * duration of this call. Returns the guide URL found in an M3U header, if any.
+     */
+    private suspend fun sync(source: Source, catalogStore: CatalogStore): String {
+        val fetched = fetch(source)
+        withContext(Dispatchers.IO) { catalogStore.save(source, fetched.catalog) }
+        return fetched.epgUrl
+    }
 
     private suspend fun fetch(source: Source): Fetched {
         if (source.type != "xtream") {
@@ -304,6 +323,8 @@ object Repo {
     }
 
     const val SEARCH_PAGE = 40
+    const val GRID_PAGE = 60
+    const val ROW_SIZE = 20
 
     /** [normalized] comes from [TextNormalizer.normalize]. Results are ranked and paginated. */
     suspend fun searchChannels(normalized: String, offset: Int): List<Channel> {
@@ -317,7 +338,7 @@ object Repo {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                // Stored catalogue unavailable: fall back to the catalogue held in memory.
+                // Stored catalogue unavailable: fall back to the channels held in memory.
                 val terms = TextNormalizer.terms(normalized)
                 memory.asSequence().filter { TextNormalizer.matches(it.name, terms) }
                     .drop(offset).take(SEARCH_PAGE).toList()
@@ -327,19 +348,44 @@ object Repo {
 
     suspend fun searchVods(kind: VodKind, normalized: String, offset: Int): List<Vod> {
         val source = active ?: return emptyList()
-        val catalogStore = store
-        val memory = if (kind == VodKind.MOVIE) movies else series
+        val catalogStore = store ?: return emptyList()
         return withContext(Dispatchers.IO) {
             try {
-                checkNotNull(catalogStore).searchVods(source, kind, normalized, SEARCH_PAGE, offset)
+                catalogStore.searchVods(source, kind, normalized, SEARCH_PAGE, offset)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                val terms = TextNormalizer.terms(normalized)
-                memory.asSequence().filter { TextNormalizer.matches(it.name, terms) }
-                    .drop(offset).take(SEARCH_PAGE).toList()
+                emptyList()
             }
         }
+    }
+
+    /** One page of films or series ([GRID_PAGE] items), optionally limited to a category. */
+    suspend fun vodPage(kind: VodKind, categoryId: String?, sort: VodSort, offset: Int): List<Vod> =
+        vodRange(kind, categoryId, sort, GRID_PAGE, offset)
+
+    private suspend fun vodRange(kind: VodKind, categoryId: String?, sort: VodSort, limit: Int, offset: Int): List<Vod> {
+        val source = active ?: return emptyList()
+        val catalogStore = store ?: return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                catalogStore.vodPage(source, kind, categoryId, sort, limit, offset)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    /** First items of a category for a home row; null until [categoryRow] has loaded it. */
+    fun cachedRow(kind: VodKind, categoryId: String): List<Vod>? = rowCache["$kind:$categoryId"]
+
+    suspend fun categoryRow(kind: VodKind, categoryId: String): List<Vod> {
+        val version = catalogVersion
+        val row = vodRange(kind, categoryId, VodSort.PROVIDER, ROW_SIZE, 0)
+        if (version == catalogVersion) rowCache["$kind:$categoryId"] = row
+        return row
     }
 
     fun programs(epgId: String): List<Program> =

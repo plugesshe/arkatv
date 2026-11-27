@@ -42,6 +42,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +66,8 @@ import tv.arka.app.data.Progress
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Vod
 import tv.arka.app.data.VodKind
+import tv.arka.app.data.VodSort
+import tv.arka.app.data.Category
 
 @Composable
 fun ArkaChip(label: String, selected: Boolean, onClick: () -> Unit) {
@@ -83,16 +87,11 @@ fun ArkaChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun HomeScreen(onOpen: (Vod) -> Unit, onGrid: (String, List<Vod>) -> Unit) {
+fun HomeScreen(onOpen: (Vod) -> Unit, onCatalog: (String, VodKind, String?, VodSort) -> Unit) {
     val context = LocalContext.current
     var filter by rememberSaveable { mutableIntStateOf(0) }
-    val movies = Repo.movies
-    val series = Repo.series
-
-    val latestMovies = remember(movies) { movies.sortedByDescending { it.added }.take(20) }
-    val latestSeries = remember(series) { series.sortedByDescending { it.added }.take(20) }
-    val moviesByCategory = remember(movies) { movies.groupBy { it.categoryId } }
-    val seriesByCategory = remember(series) { series.groupBy { it.categoryId } }
+    val latestMovies = Repo.latestMovies
+    val latestSeries = Repo.latestSeries
     val featured = remember(latestMovies, latestSeries, filter) {
         val pool = when (filter) {
             1 -> latestMovies
@@ -119,7 +118,7 @@ fun HomeScreen(onOpen: (Vod) -> Unit, onGrid: (String, List<Vod>) -> Unit) {
             }
         }
 
-        if (movies.isEmpty() && series.isEmpty()) {
+        if (Repo.movieCount == 0 && Repo.seriesCount == 0) {
             item { EmptyState() }
         }
 
@@ -154,27 +153,62 @@ fun HomeScreen(onOpen: (Vod) -> Unit, onGrid: (String, List<Vod>) -> Unit) {
             item { VodRow("Ma liste", myList, onOpen) }
         }
         if (filter != 2 && latestMovies.isNotEmpty()) {
-            item { VodRow("Films récemment ajoutés", latestMovies, onOpen) { onGrid("Films", movies) } }
+            item {
+                VodRow("Films récemment ajoutés", latestMovies, onOpen) {
+                    onCatalog("Films", VodKind.MOVIE, null, VodSort.RECENT)
+                }
+            }
         }
         if (filter != 1 && latestSeries.isNotEmpty()) {
-            item { VodRow("Séries récemment ajoutées", latestSeries, onOpen) { onGrid("Séries", series) } }
+            item {
+                VodRow("Séries récemment ajoutées", latestSeries, onOpen) {
+                    onCatalog("Séries", VodKind.SERIES, null, VodSort.RECENT)
+                }
+            }
         }
         if (filter != 2) {
             items(Repo.vodCategories) { category ->
-                val list = moviesByCategory[category.id]
-                if (!list.isNullOrEmpty()) {
-                    VodRow(category.name, list.take(20), onOpen) { onGrid(category.name, list) }
+                CategoryVodRow(VodKind.MOVIE, category, onOpen) {
+                    onCatalog(category.name, VodKind.MOVIE, category.id, VodSort.PROVIDER)
                 }
             }
         }
         if (filter != 1) {
             items(Repo.seriesCategories) { category ->
-                val list = seriesByCategory[category.id]
-                if (!list.isNullOrEmpty()) {
-                    VodRow(category.name, list.take(20), onOpen) { onGrid(category.name, list) }
+                CategoryVodRow(VodKind.SERIES, category, onOpen) {
+                    onCatalog(category.name, VodKind.SERIES, category.id, VodSort.PROVIDER)
                 }
             }
         }
+    }
+}
+
+/** A home row whose posters are read from the stored catalogue when the row comes into view. */
+@Composable
+private fun CategoryVodRow(kind: VodKind, category: Category, onOpen: (Vod) -> Unit, onMore: () -> Unit) {
+    val version = Repo.catalogVersion
+    var items by remember(kind, category.id, version) { mutableStateOf(Repo.cachedRow(kind, category.id)) }
+    LaunchedEffect(kind, category.id, version) {
+        if (items == null) items = Repo.categoryRow(kind, category.id)
+    }
+    val loaded = items
+    if (loaded == null) {
+        Column {
+            SectionTitle(category.name)
+            Row(
+                Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                repeat(3) {
+                    Box(
+                        Modifier.width(112.dp).aspectRatio(2f / 3f)
+                            .clip(RoundedCornerShape(ArkaRadius.md)).background(ArkaCard)
+                    )
+                }
+            }
+        }
+    } else if (loaded.isNotEmpty()) {
+        VodRow(category.name, loaded, onOpen, onMore)
     }
 }
 

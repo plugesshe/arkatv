@@ -88,7 +88,13 @@ interface CatalogDao {
     suspend fun searchChannels(query: SupportSQLiteQuery): List<ChannelRow>
 
     @RawQuery
-    suspend fun searchVods(query: SupportSQLiteQuery): List<VodRow>
+    suspend fun queryVods(query: SupportSQLiteQuery): List<VodRow>
+
+    @Query("SELECT COUNT(*) FROM vods WHERE sourceId = :sourceId AND kind = :kind")
+    suspend fun countVods(sourceId: String, kind: String): Int
+
+    @Query("SELECT categoryId FROM vods WHERE sourceId = :sourceId AND kind = :kind GROUP BY categoryId")
+    suspend fun usedCategories(sourceId: String, kind: String): List<String>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChannels(rows: List<ChannelRow>)

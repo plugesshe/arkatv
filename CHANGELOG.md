@@ -12,6 +12,12 @@
 - Catalogue et guide TV conservés dans une base locale : démarrage sur le cache, actualisation en
   arrière-plan, dernier catalogue valide conservé en cas de panne.
 - Changement de format du direct (MPEG-TS / HLS) sans rechargement.
+- Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
+
+### Catalogue
+- Grilles triables : ordre par défaut, ajouts récents, A – Z, année, note.
+- Les catégories vides ne sont plus proposées.
+- Revenir d'une fiche retrouve la grille, son tri et sa position ; l'accueil garde sa position.
 
 ### Recherche
 - Recherche insensible aux accents, à la casse et à la ponctuation, sur plusieurs mots.
