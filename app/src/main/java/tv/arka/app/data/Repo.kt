@@ -58,6 +58,14 @@ object Repo {
     var seriesCount by mutableIntStateOf(0)
     var latestMovies by mutableStateOf(listOf<Vod>())
     var latestSeries by mutableStateOf(listOf<Vod>())
+    var movieCategoryCounts by mutableStateOf(mapOf<String, Int>())
+    var seriesCategoryCounts by mutableStateOf(mapOf<String, Int>())
+
+    var profiles by mutableStateOf(listOf<Profile>())
+    var activeProfile by mutableStateOf(Profile(Profile.MAIN_ID, "Principal", 0))
+
+    /** False until the viewer has picked a profile in this session (only asked when there are several). */
+    var profileChosen by mutableStateOf(false)
     var epg by mutableStateOf(mapOf<String, List<Program>>())
 
     var favorites by mutableStateOf(setOf<String>())
@@ -92,6 +100,9 @@ object Repo {
         initialised = true
         store = CatalogStore(ArkaDatabase.create(context.applicationContext))
         sources = Store.loadSources()
+        profiles = Store.loadProfiles()
+        activeProfile = profiles.firstOrNull { it.id == Store.activeProfileId } ?: profiles.first()
+        if (activeProfile.id != Store.activeProfileId) Store.activeProfileId = activeProfile.id
         val wanted = Store.activeSourceId
         val first = sources.firstOrNull { it.id == wanted } ?: sources.firstOrNull()
         if (first != null) select(first)
@@ -100,6 +111,13 @@ object Repo {
     fun select(source: Source) {
         active = source
         Store.activeSourceId = source.id
+        loadUserData(source)
+        account = Store.loadAccount(source.id)
+        open(source, force = false)
+    }
+
+    /** Everything that belongs to the active profile for this source. The catalogue is shared. */
+    private fun loadUserData(source: Source) {
         favoriteOrder = Store.loadFavoriteOrder(source.id)
         favorites = favoriteOrder.toSet()
         hiddenChannels = Store.loadHiddenChannels(source.id)
@@ -107,8 +125,43 @@ object Repo {
         progress = Store.loadProgress(source.id)
         recentChannels = Store.loadRecentChannels(source.id)
         hiddenCategories = Store.loadHiddenCategories(source.id)
-        account = Store.loadAccount(source.id)
-        open(source, force = false)
+    }
+
+    fun switchProfile(profile: Profile) {
+        activeProfile = profile
+        Store.activeProfileId = profile.id
+        profileChosen = true
+        active?.let { loadUserData(it) }
+    }
+
+    /** Returns the new profile, or null when the limit is reached or the name is empty. */
+    fun addProfile(name: String): Profile? {
+        val clean = name.trim()
+        if (clean.isEmpty() || profiles.size >= Profile.MAX) return null
+        val used = profiles.map { it.color }.toSet()
+        val color = (0 until Profile.MAX).firstOrNull { it !in used } ?: 0
+        val profile = Profile(java.util.UUID.randomUUID().toString().replace("-", "").take(8), clean, color)
+        profiles = profiles + profile
+        Store.saveProfiles(profiles)
+        return profile
+    }
+
+    fun renameProfile(profile: Profile, name: String) {
+        val clean = name.trim()
+        if (clean.isEmpty()) return
+        val renamed = profile.copy(name = clean)
+        profiles = profiles.map { if (it.id == profile.id) renamed else it }
+        Store.saveProfiles(profiles)
+        if (activeProfile.id == profile.id) activeProfile = renamed
+    }
+
+    /** The main profile cannot be deleted: it owns the data of earlier versions. */
+    fun deleteProfile(profile: Profile) {
+        if (profile.isMain) return
+        profiles = profiles.filter { it.id != profile.id }
+        Store.saveProfiles(profiles)
+        if (activeProfile.id == profile.id) switchProfile(profiles.first())
+        Store.deleteProfileData(profile.id)
     }
 
     /** Manual refresh requested by the user. */
@@ -163,6 +216,8 @@ object Repo {
         seriesCount = summary?.seriesCount ?: 0
         latestMovies = summary?.latestMovies.orEmpty()
         latestSeries = summary?.latestSeries.orEmpty()
+        movieCategoryCounts = summary?.movieCategoryCounts.orEmpty()
+        seriesCategoryCounts = summary?.seriesCategoryCounts.orEmpty()
         rowCache.clear()
         detailsCache.clear()
     }
@@ -378,19 +433,56 @@ object Repo {
     }
 
     /** One page of films or series ([GRID_PAGE] items), optionally limited to a category. */
-    suspend fun vodPage(kind: VodKind, categoryId: String?, sort: VodSort, offset: Int): List<Vod> =
-        vodRange(kind, categoryId, sort, GRID_PAGE, offset)
+    suspend fun vodPage(kind: VodKind, categoryId: String?, sort: VodSort, descending: Boolean?, offset: Int): List<Vod> =
+        vodRange(kind, categoryId, sort, descending, GRID_PAGE, offset)
 
-    private suspend fun vodRange(kind: VodKind, categoryId: String?, sort: VodSort, limit: Int, offset: Int): List<Vod> {
+    private suspend fun vodRange(
+        kind: VodKind,
+        categoryId: String?,
+        sort: VodSort,
+        descending: Boolean?,
+        limit: Int,
+        offset: Int,
+    ): List<Vod> {
         val source = active ?: return emptyList()
         val catalogStore = store ?: return emptyList()
         return withContext(Dispatchers.IO) {
             try {
-                catalogStore.vodPage(source, kind, categoryId, sort, limit, offset)
+                catalogStore.vodPage(source, kind, categoryId, sort, descending, limit, offset)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 emptyList()
+            }
+        }
+    }
+
+    /** Discovery: number of titles matching the chosen kind and categories. */
+    suspend fun discoverCount(kind: VodKind, categories: Collection<String>): Int {
+        val source = active ?: return 0
+        val catalogStore = store ?: return 0
+        return withContext(Dispatchers.IO) {
+            try {
+                catalogStore.countIn(source, kind, categories)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                0
+            }
+        }
+    }
+
+    /** Discovery: the title at [position] among the matches. */
+    suspend fun discoverPick(kind: VodKind, categories: Collection<String>, position: Int): Vod? {
+        val source = active ?: return null
+        val catalogStore = store ?: return null
+        return withContext(Dispatchers.IO) {
+            try {
+                catalogStore.pickIn(source, kind, categories, position)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                null
             }
         }
     }
@@ -400,7 +492,7 @@ object Repo {
 
     suspend fun categoryRow(kind: VodKind, categoryId: String): List<Vod> {
         val version = catalogVersion
-        val row = vodRange(kind, categoryId, VodSort.PROVIDER, ROW_SIZE, 0)
+        val row = vodRange(kind, categoryId, VodSort.PROVIDER, null, ROW_SIZE, 0)
         if (version == catalogVersion) rowCache["$kind:$categoryId"] = row
         return row
     }

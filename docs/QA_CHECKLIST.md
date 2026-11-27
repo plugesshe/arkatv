@@ -38,6 +38,16 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Ouvrir une fiche depuis le milieu d'une grille puis revenir : même position, même tri.
 - [ ] Ouvrir une fiche depuis le bas de l'accueil puis revenir : même position.
 
+### Design, profils, Découverte
+- [ ] Accueil : le hero change toutes les 8 secondes en fondu ; sur TV il s'arrête quand le focus y est.
+- [ ] Catalogue mobile : « Catégorie » et « Tri » ouvrent une feuille ; compteur « n / total » ; les deux
+      sens de tri ; « Effacer le filtre ».
+- [ ] Catalogue TV : panneau de catégories à gauche avec compteurs, tri par la puce.
+- [ ] Découvrir : choisir des catégories, « Autre tirage » propose un autre titre, « Lire » le lance.
+- [ ] Profils : créer un deuxième profil, vérifier que favoris, liste et reprise sont vides pour lui et
+      intacts pour le premier ; « Qui regarde ? » au lancement suivant ; renommer, supprimer.
+- [ ] Squelettes animés pendant le chargement des rangées et des grilles.
+
 ### Recherche
 - [ ] « heritiers » trouve « Les Héritiers du Vent » ; deux mots dans le désordre fonctionnent.
 - [ ] Une recherche large charge la suite en faisant défiler les affiches ; « Afficher plus de chaînes ».

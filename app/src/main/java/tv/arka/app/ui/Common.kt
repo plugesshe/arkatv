@@ -197,12 +197,7 @@ fun Poster(vod: Vod, modifier: Modifier = Modifier, onClick: () -> Unit) {
                 modifier = Modifier.padding(8.dp),
             )
             if (vod.poster.isNotBlank()) {
-                AsyncImage(
-                    model = vod.poster,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                ArkaImage(vod.poster, Modifier.fillMaxSize())
             }
         }
         Text(

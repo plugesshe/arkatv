@@ -34,15 +34,21 @@ sont divisées par 2 (`ArkaSize`, échelle typographique TV).
 
 ## Composants en place
 
-`Logo`, `ArkaIcon`, `PrimaryButton`, `SecondaryButton`, `SquareButton`, `ArkaChip`, `ArkaBadge`,
+`Logo`, `ArkaIcon`, `ArkaImage` (fondu 150 ms), `PrimaryButton`, `SecondaryButton`, `SquareButton`,
+`AccentButton` (violet, mode Découverte), `SegmentButton`, `ArkaChip`, `ArkaBadge`, `ArkaSheet` +
+`SheetOption` (feuille sur mobile, dialogue sur TV), `ProfileAvatar`, `Modifier.skeleton()` (lueur 1,6 s),
 `SectionTitle`, `ScreenHeader`, `Poster`, `VodRow`, `ChannelLogo`, `ChannelRow`, barre inférieure mobile,
-barre latérale TV.
+barre latérale TV, panneau de catégories TV.
 
 ## Écarts connus avec les maquettes
 
-- Les écrans autres que l'accueil, la navigation et les grilles n'ont pas encore été redessinés : ils
-  héritent des couleurs, des polices et des puces, pas de leur mise en page (voir `PROGRESS.md`).
-- Tailles de texte encore écrites en dur dans les écrans non refondus.
-- Squelettes sans lueur animée ; pas de fondu d'apparition des images ; hero fixe (pas de rotation 8 s).
+- Écrans non refondus (fiches, direct, guide, lecteur, recherche, Mon espace, sources) : ils héritent des
+  couleurs, des polices, des puces et des boutons, pas encore de leur mise en page (voir `PROGRESS.md`).
+- **Découverte** : pas de choix par durée. Les sources ne donnent pas la durée dans leurs listes ; la
+  maquette la propose, l'application offre à la place le choix Film / Série.
+- **Profils** : pas de profil enfant verrouillé (le contrôle parental n'existe pas) ; les sources sont
+  communes à tous les profils.
+- **Catalogue** : un seul filtre (la catégorie) en plus du tri ; les puces « années », « non vus » et
+  « note ≥ 7 » des maquettes ne sont pas faites.
 - Réglage « Animations réduites » non pris en compte.
-- États pressés (échelle 0,97) appliqués au bouton primaire uniquement par la couleur.
+- État pressé : couleur assombrie sur le bouton primaire, sans l'échelle 0,97.

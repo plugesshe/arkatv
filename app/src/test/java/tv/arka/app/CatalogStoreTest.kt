@@ -188,7 +188,7 @@ class CatalogStoreTest {
     @Test
     fun pagesCanBeSortedInEveryOfferedOrder() = runBlocking {
         store.save(xtream, catalog)
-        suspend fun names(sort: VodSort) = store.vodPage(xtream, VodKind.MOVIE, null, sort, 10, 0).map { it.name }
+        suspend fun names(sort: VodSort) = store.vodPage(xtream, VodKind.MOVIE, null, sort, null, 10, 0).map { it.name }
         assertEquals(listOf("Les Héritiers du Vent", "Héritage", "Le Dernier Convoi", "L'Héritier"), names(VodSort.PROVIDER))
         assertEquals(listOf("Héritage", "L'Héritier", "Le Dernier Convoi", "Les Héritiers du Vent"), names(VodSort.NAME))
         assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi", "L'Héritier", "Héritage"), names(VodSort.RECENT))
@@ -197,12 +197,44 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun everyOrderCanBeReversed() = runBlocking {
+        store.save(xtream, catalog)
+        suspend fun names(sort: VodSort, descending: Boolean) =
+            store.vodPage(xtream, VodKind.MOVIE, null, sort, descending, 10, 0).map { it.name }
+        assertEquals(listOf("Les Héritiers du Vent", "Le Dernier Convoi", "L'Héritier", "Héritage"), names(VodSort.NAME, true))
+        assertEquals(listOf("Héritage", "L'Héritier", "Le Dernier Convoi", "Les Héritiers du Vent"), names(VodSort.RECENT, false))
+        assertEquals("Le Dernier Convoi", names(VodSort.RATING, true).first())
+        assertEquals("Le Dernier Convoi", names(VodSort.RATING, false).last())
+    }
+
+    @Test
+    fun countsTitlesPerCategory() = runBlocking {
+        store.save(xtream, catalog)
+        val summary = store.loadSummary(xtream, "ts", 20)!!
+        assertEquals(mapOf("c1" to 3, "c2" to 1), summary.movieCategoryCounts)
+        assertEquals(mapOf("s1" to 1), summary.seriesCategoryCounts)
+    }
+
+    @Test
+    fun discoveryCountsAndPicksAmongTheChosenCategories() = runBlocking {
+        store.save(xtream, catalog)
+        assertEquals(4, store.countIn(xtream, VodKind.MOVIE, emptyList()))
+        assertEquals(3, store.countIn(xtream, VodKind.MOVIE, listOf("c1")))
+        assertEquals(4, store.countIn(xtream, VodKind.MOVIE, listOf("c1", "c2")))
+        assertEquals(0, store.countIn(xtream, VodKind.MOVIE, listOf("c3")))
+        assertEquals("L'Héritier", store.pickIn(xtream, VodKind.MOVIE, listOf("c2"), 0)!!.name)
+        assertEquals("Le Dernier Convoi", store.pickIn(xtream, VodKind.MOVIE, listOf("c1"), 2)!!.name)
+        assertNull(store.pickIn(xtream, VodKind.MOVIE, listOf("c1"), 3))
+        assertEquals("Ombres de Verre", store.pickIn(xtream, VodKind.SERIES, emptyList(), 0)!!.name)
+    }
+
+    @Test
     fun pagesAreLimitedToACategoryAndPaginated() = runBlocking {
         store.save(xtream, catalog)
-        assertEquals(listOf("L'Héritier"), store.vodPage(xtream, VodKind.MOVIE, "c2", VodSort.PROVIDER, 10, 0).map { it.name })
-        assertTrue(store.vodPage(xtream, VodKind.MOVIE, "c3", VodSort.PROVIDER, 10, 0).isEmpty())
-        val first = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, 3, 0)
-        val second = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, 3, 3)
+        assertEquals(listOf("L'Héritier"), store.vodPage(xtream, VodKind.MOVIE, "c2", VodSort.PROVIDER, null, 10, 0).map { it.name })
+        assertTrue(store.vodPage(xtream, VodKind.MOVIE, "c3", VodSort.PROVIDER, null, 10, 0).isEmpty())
+        val first = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, null, 3, 0)
+        val second = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, null, 3, 3)
         assertEquals(3, first.size)
         assertEquals(listOf("L'Héritier"), second.map { it.name })
         assertEquals("http://host.test:8080/movie/alice/s3cret/13.mkv", second[0].url)
@@ -231,7 +263,7 @@ class CatalogStoreTest {
             repeat(3) { i -> writer.channel(Channel("c$i", "Chaîne $i", "", "l1", "", "u", i + 1)) }
         }
         assertEquals(1234, store.count(xtream, VodKind.MOVIE))
-        val page = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, 3, 1230)
+        val page = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, null, 3, 1230)
         assertEquals(listOf("Film 1230", "Film 1231", "Film 1232"), page.map { it.name })
         assertEquals(3, store.load(xtream, "ts")!!.channels.size)
     }

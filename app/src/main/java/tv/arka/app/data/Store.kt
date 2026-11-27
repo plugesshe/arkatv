@@ -20,10 +20,47 @@ object Store {
         SecretBox.init(created)
         prefs = created
         migrateLegacy(created)
+        profileScope = scopeOf(activeProfileId)
     }
 
     fun resetForTests() {
         prefs = null
+        profileScope = ""
+    }
+
+    // ----- Profiles. The main profile keeps the historical keys, so data from earlier versions is its own.
+
+    private var profileScope = ""
+
+    private fun scopeOf(profileId: String): String = if (profileId == Profile.MAIN_ID) "" else "p${profileId}_"
+
+    /** Key of a value that belongs to the active profile. */
+    private fun scoped(key: String): String = profileScope + key
+
+    var activeProfileId: String
+        get() = p().getString("profile", Profile.MAIN_ID) ?: Profile.MAIN_ID
+        set(value) {
+            p().edit().putString("profile", value).apply()
+            profileScope = scopeOf(value)
+        }
+
+    fun loadProfiles(): List<Profile> {
+        val stored = readArray("profiles") { o -> Profile(o.optString("id"), o.optString("name"), o.optInt("color")) }
+            .filter { it.id.isNotBlank() }
+        return if (stored.any { it.isMain }) stored else listOf(Profile(Profile.MAIN_ID, "Principal", 0)) + stored
+    }
+
+    fun saveProfiles(list: List<Profile>) = writeArray("profiles", list) { profile ->
+        JSONObject().put("id", profile.id).put("name", profile.name).put("color", profile.color)
+    }
+
+    /** Removes everything a deleted profile had stored. */
+    fun deleteProfileData(profileId: String) {
+        if (profileId == Profile.MAIN_ID) return
+        val prefix = "enc_" + scopeOf(profileId)
+        val editor = p().edit()
+        p().all.keys.filter { it.startsWith(prefix) }.forEach { editor.remove(it) }
+        editor.apply()
     }
 
     private fun p(): SharedPreferences = prefs ?: error("Store not initialised")
@@ -95,7 +132,7 @@ object Store {
     }
 
     fun loadSearchHistory(): List<String> {
-        val raw = readBlob("search_history") ?: return emptyList()
+        val raw = readBlob(scoped("search_history")) ?: return emptyList()
         return try {
             val array = JSONArray(raw)
             (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }
@@ -107,7 +144,7 @@ object Store {
     fun saveSearchHistory(list: List<String>) {
         val array = JSONArray()
         list.forEach { array.put(it) }
-        writeBlob("search_history", array.toString())
+        writeBlob(scoped("search_history"), array.toString())
     }
 
     private fun loadStrings(key: String): List<String> {
@@ -126,17 +163,17 @@ object Store {
         writeBlob(key, array.toString())
     }
 
-    fun loadRecentChannels(sourceId: String): List<String> = loadStrings("recent_$sourceId")
-    fun saveRecentChannels(sourceId: String, ids: List<String>) = saveStrings("recent_$sourceId", ids)
+    fun loadRecentChannels(sourceId: String): List<String> = loadStrings(scoped("recent_$sourceId"))
+    fun saveRecentChannels(sourceId: String, ids: List<String>) = saveStrings(scoped("recent_$sourceId"), ids)
 
-    fun loadHiddenChannels(sourceId: String): Set<String> = loadStrings("hiddench_$sourceId").toSet()
-    fun saveHiddenChannels(sourceId: String, ids: Set<String>) = saveStrings("hiddench_$sourceId", ids)
+    fun loadHiddenChannels(sourceId: String): Set<String> = loadStrings(scoped("hiddench_$sourceId")).toSet()
+    fun saveHiddenChannels(sourceId: String, ids: Set<String>) = saveStrings(scoped("hiddench_$sourceId"), ids)
 
     /** Favourite channel ids in the order chosen by the user. */
-    fun loadFavoriteOrder(sourceId: String): List<String> = loadStrings("fav_$sourceId").distinct()
+    fun loadFavoriteOrder(sourceId: String): List<String> = loadStrings(scoped("fav_$sourceId")).distinct()
 
-    fun loadHiddenCategories(sourceId: String): Set<String> = loadStrings("hidden_$sourceId").toSet()
-    fun saveHiddenCategories(sourceId: String, ids: Set<String>) = saveStrings("hidden_$sourceId", ids)
+    fun loadHiddenCategories(sourceId: String): Set<String> = loadStrings(scoped("hidden_$sourceId")).toSet()
+    fun saveHiddenCategories(sourceId: String, ids: Set<String>) = saveStrings(scoped("hidden_$sourceId"), ids)
 
     fun loadAccount(sourceId: String): AccountInfo? {
         val raw = readBlob("account_$sourceId") ?: return null
@@ -161,7 +198,7 @@ object Store {
     )
 
     fun loadFavorites(sourceId: String): Set<String> {
-        val raw = readBlob("fav_$sourceId") ?: return emptySet()
+        val raw = readBlob(scoped("fav_$sourceId")) ?: return emptySet()
         return try {
             val array = JSONArray(raw)
             (0 until array.length()).map { array.optString(it) }.toSet()
@@ -173,10 +210,10 @@ object Store {
     fun saveFavorites(sourceId: String, value: Collection<String>) {
         val array = JSONArray()
         value.forEach { array.put(it) }
-        writeBlob("fav_$sourceId", array.toString())
+        writeBlob(scoped("fav_$sourceId"), array.toString())
     }
 
-    fun loadMyList(sourceId: String): List<Vod> = readArray("list_$sourceId") { o ->
+    fun loadMyList(sourceId: String): List<Vod> = readArray(scoped("list_$sourceId")) { o ->
         Vod(
             id = o.optString("id"),
             kind = if (o.optString("kind") == "SERIES") VodKind.SERIES else VodKind.MOVIE,
@@ -190,13 +227,13 @@ object Store {
         )
     }
 
-    fun saveMyList(sourceId: String, list: List<Vod>) = writeArray("list_$sourceId", list) { v ->
+    fun saveMyList(sourceId: String, list: List<Vod>) = writeArray(scoped("list_$sourceId"), list) { v ->
         JSONObject().put("id", v.id).put("kind", v.kind.name).put("name", v.name).put("poster", v.poster)
             .put("cat", v.categoryId).put("url", v.url).put("rating", v.rating).put("year", v.year)
             .put("plot", v.plot)
     }
 
-    fun loadProgress(sourceId: String): List<Progress> = readArray("progress_$sourceId") { o ->
+    fun loadProgress(sourceId: String): List<Progress> = readArray(scoped("progress_$sourceId")) { o ->
         Progress(
             item = PlayItem(
                 key = o.optString("key"),
@@ -212,17 +249,23 @@ object Store {
         )
     }
 
-    fun saveProgress(sourceId: String, list: List<Progress>) = writeArray("progress_$sourceId", list) { pr ->
+    fun saveProgress(sourceId: String, list: List<Progress>) = writeArray(scoped("progress_$sourceId"), list) { pr ->
         JSONObject().put("key", pr.item.key).put("title", pr.item.title).put("subtitle", pr.item.subtitle)
             .put("url", pr.item.url).put("poster", pr.item.poster).put("pos", pr.position)
             .put("dur", pr.duration).put("updated", pr.updated)
     }
 
+    /** Forgets a source for every profile: its lists, history, preferences and sync dates. */
     fun clearSource(sourceId: String) {
-        p().edit()
-            .remove("enc_list_$sourceId").remove("enc_progress_$sourceId").remove("enc_fav_$sourceId")
-            .remove("enc_epgurl_$sourceId").remove("sync_$sourceId").remove("epgsync_$sourceId")
-            .remove("enc_hiddench_$sourceId").remove("enc_recent_$sourceId").remove("enc_hidden_$sourceId").remove("enc_account_$sourceId")
+        val perProfile = listOf("list", "progress", "fav", "recent", "hidden", "hiddench").map { "${it}_$sourceId" }
+        val editor = p().edit()
+        for (key in p().all.keys) {
+            if (!key.startsWith("enc_")) continue
+            val name = key.removePrefix("enc_")
+            if (perProfile.any { name == it || (name.startsWith("p") && name.endsWith("_$it")) }) editor.remove(key)
+        }
+        editor.remove("enc_epgurl_$sourceId").remove("enc_account_$sourceId")
+            .remove("sync_$sourceId").remove("epgsync_$sourceId")
             .apply()
     }
 

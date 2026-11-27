@@ -223,6 +223,8 @@ class CatalogStore(private val database: ArkaDatabase) {
         val seriesCategories: List<Category>,
         val movieCount: Int,
         val seriesCount: Int,
+        val movieCategoryCounts: Map<String, Int>,
+        val seriesCategoryCounts: Map<String, Int>,
         val latestMovies: List<Vod>,
         val latestSeries: List<Vod>,
     )
@@ -235,50 +237,92 @@ class CatalogStore(private val database: ArkaDatabase) {
         if (channelRows.isEmpty() && movieCount == 0 && seriesCount == 0) return null
         val categories = dao.categories(source.id).groupBy { it.kind }
         val api = apiOf(source)
+        val movieCounts = dao.categoryCounts(source.id, MOVIE).associate { it.categoryId to it.total }
+        val seriesCounts = dao.categoryCounts(source.id, SERIES).associate { it.categoryId to it.total }
         fun cats(kind: String, used: Set<String>?): List<Category> = categories[kind].orEmpty()
             .filter { used == null || it.categoryId in used }
             .map { Category(it.categoryId, it.name) }
         return Summary(
             liveCategories = cats(LIVE, null),
             channels = channelRows.map { channelOf(it, api, liveFormat) },
-            vodCategories = cats(MOVIE, dao.usedCategories(source.id, MOVIE).toSet()),
-            seriesCategories = cats(SERIES, dao.usedCategories(source.id, SERIES).toSet()),
+            vodCategories = cats(MOVIE, movieCounts.keys),
+            seriesCategories = cats(SERIES, seriesCounts.keys),
             movieCount = movieCount,
             seriesCount = seriesCount,
-            latestMovies = vodPage(source, VodKind.MOVIE, null, VodSort.RECENT, rowSize, 0),
-            latestSeries = vodPage(source, VodKind.SERIES, null, VodSort.RECENT, rowSize, 0),
+            movieCategoryCounts = movieCounts,
+            seriesCategoryCounts = seriesCounts,
+            latestMovies = vodPage(source, VodKind.MOVIE, null, VodSort.RECENT, null, rowSize, 0),
+            latestSeries = vodPage(source, VodKind.SERIES, null, VodSort.RECENT, null, rowSize, 0),
         )
     }
 
-    /** One page of films or series, optionally limited to a category. */
+    /**
+     * One page of films or series, optionally limited to a category.
+     * [descending] null means the natural direction of the order: A → Z for names, newest or best first otherwise.
+     */
     suspend fun vodPage(
         source: Source,
         kind: VodKind,
         categoryId: String?,
         sort: VodSort,
+        descending: Boolean?,
         limit: Int,
         offset: Int,
     ): List<Vod> {
         val sql = StringBuilder("SELECT * FROM vods WHERE sourceId = ? AND kind = ?")
         val args = ArrayList<Any>()
         args.add(source.id)
-        args.add(if (kind == VodKind.MOVIE) MOVIE else SERIES)
+        args.add(kindName(kind))
         if (categoryId != null) {
             sql.append(" AND categoryId = ?")
             args.add(categoryId)
         }
+        val down = descending ?: (sort != VodSort.NAME && sort != VodSort.PROVIDER)
+        val direction = if (down) "DESC" else "ASC"
         val order = when (sort) {
-            VodSort.PROVIDER -> "pos"
-            VodSort.NAME -> "search, pos"
-            VodSort.RECENT -> "addedAt DESC, pos"
-            VodSort.YEAR -> "year DESC, pos"
-            VodSort.RATING -> "CAST(rating AS REAL) DESC, pos"
+            VodSort.PROVIDER -> "pos $direction"
+            VodSort.NAME -> "search $direction, pos"
+            VodSort.RECENT -> "addedAt $direction, pos"
+            VodSort.YEAR -> "year $direction, pos"
+            VodSort.RATING -> "CAST(rating AS REAL) $direction, pos"
         }
         sql.append(" ORDER BY ").append(order).append(" LIMIT ? OFFSET ?")
         args.add(limit)
         args.add(offset)
         val api = apiOf(source)
         return dao.queryVods(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).map { vodOf(it, kind, api) }
+    }
+
+    private fun kindName(kind: VodKind): String = if (kind == VodKind.MOVIE) MOVIE else SERIES
+
+    private fun categoryFilter(sql: StringBuilder, args: MutableList<Any>, categories: Collection<String>) {
+        val wanted = categories.take(MAX_CATEGORY_FILTER)
+        if (wanted.isEmpty()) return
+        sql.append(" AND categoryId IN (").append(wanted.joinToString(",") { "?" }).append(")")
+        args.addAll(wanted)
+    }
+
+    /** How many films or series match the Discovery choices (all categories when none is chosen). */
+    suspend fun countIn(source: Source, kind: VodKind, categories: Collection<String>): Int {
+        val sql = StringBuilder("SELECT COUNT(*) FROM vods WHERE sourceId = ? AND kind = ?")
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(kindName(kind))
+        categoryFilter(sql, args, categories)
+        return dao.queryInt(SimpleSQLiteQuery(sql.toString(), args.toTypedArray()))
+    }
+
+    /** The [position]-th match (provider order) of the Discovery choices, or null when out of range. */
+    suspend fun pickIn(source: Source, kind: VodKind, categories: Collection<String>, position: Int): Vod? {
+        val sql = StringBuilder("SELECT * FROM vods WHERE sourceId = ? AND kind = ?")
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(kindName(kind))
+        categoryFilter(sql, args, categories)
+        sql.append(" ORDER BY pos LIMIT 1 OFFSET ?")
+        args.add(position)
+        val api = apiOf(source)
+        return dao.queryVods(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).firstOrNull()?.let { vodOf(it, kind, api) }
     }
 
     /**
@@ -355,5 +399,6 @@ class CatalogStore(private val database: ArkaDatabase) {
         const val MOVIE = "movie"
         const val SERIES = "series"
         const val BATCH = 500
+        const val MAX_CATEGORY_FILTER = 50
     }
 }

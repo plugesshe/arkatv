@@ -182,6 +182,15 @@ object ArkaTheme {
         @Composable get() = if (LocalIsTv.current) ArkaSize.tvRowGap else ArkaSpacing.xl
 }
 
+/** Profile avatar tints (background, initial), as drawn on the "Qui regarde ?" mock-up. */
+val ArkaAvatarColors = listOf(
+    Color(0xFF2A2340) to Color(0xFFC9B8FF),
+    Color(0xFF3A1F24) to Color(0xFFFF9AA8),
+    Color(0xFF1F3A33) to Color(0xFF8FE3C5),
+    Color(0xFF3A311F) to Color(0xFFF2D08A),
+    Color(0xFF1F2E3A) to Color(0xFF9CCBF2),
+)
+
 // Short aliases used throughout the screens.
 val ArkaBg = ArkaColors.Background
 val ArkaSurface = ArkaColors.BackgroundAlt

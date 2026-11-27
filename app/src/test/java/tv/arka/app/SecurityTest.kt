@@ -12,6 +12,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import tv.arka.app.data.AccountInfo
+import tv.arka.app.data.Profile
 import tv.arka.app.data.Source
 import tv.arka.app.data.Store
 import tv.arka.app.data.security.SecretBox
@@ -104,6 +105,49 @@ class SecurityTest {
         assertTrue(Store.loadRecentChannels("s3").isEmpty())
         assertTrue(Store.loadHiddenCategories("s3").isEmpty())
         assertNull(Store.loadAccount("s3"))
+    }
+
+    @Test
+    fun profilesKeepSeparateDataAndTheMainOneOwnsWhatExisted() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        Store.init(context)
+        assertEquals(listOf(Profile(Profile.MAIN_ID, "Principal", 0)), Store.loadProfiles())
+        Store.saveFavorites("s4", listOf("1"))
+        Store.saveSearchHistory(listOf("phare"))
+
+        Store.saveProfiles(Store.loadProfiles() + Profile("abc12345", "Noé", 1))
+        Store.activeProfileId = "abc12345"
+        assertTrue(Store.loadFavoriteOrder("s4").isEmpty())
+        assertTrue(Store.loadSearchHistory().isEmpty())
+        Store.saveFavorites("s4", listOf("7", "8"))
+        Store.saveRecentChannels("s4", listOf("7"))
+
+        Store.activeProfileId = Profile.MAIN_ID
+        assertEquals(listOf("1"), Store.loadFavoriteOrder("s4"))
+        assertEquals(listOf("phare"), Store.loadSearchHistory())
+
+        // Deleting a profile removes only its own data.
+        Store.deleteProfileData("abc12345")
+        Store.activeProfileId = "abc12345"
+        assertTrue(Store.loadFavoriteOrder("s4").isEmpty())
+        Store.activeProfileId = Profile.MAIN_ID
+        assertEquals(listOf("1"), Store.loadFavoriteOrder("s4"))
+        assertEquals(2, Store.loadProfiles().size)
+    }
+
+    @Test
+    fun removingASourceForgetsItForEveryProfile() {
+        val context: Context = RuntimeEnvironment.getApplication()
+        Store.init(context)
+        Store.saveFavorites("s5", listOf("1"))
+        Store.activeProfileId = "abc12345"
+        Store.saveFavorites("s5", listOf("2"))
+        Store.saveFavorites("s6", listOf("3"))
+        Store.clearSource("s5")
+        assertTrue(Store.loadFavoriteOrder("s5").isEmpty())
+        assertEquals(listOf("3"), Store.loadFavoriteOrder("s6"))
+        Store.activeProfileId = Profile.MAIN_ID
+        assertTrue(Store.loadFavoriteOrder("s5").isEmpty())
     }
 
     @Test

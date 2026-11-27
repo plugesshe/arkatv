@@ -51,6 +51,19 @@
 - Barre de navigation mobile redessinée ; barre latérale rétractable sur Android TV avec Films, Séries
   et Ma liste en accès direct.
 
+### Profils
+- Profils locaux (jusqu'à 5) : favoris, « Ma liste », reprise de lecture, chaînes récentes et recherches
+  propres à chacun. Écran « Qui regarde ? » au lancement dès qu'il y a plusieurs profils.
+
+### Découverte
+- Mode Découverte : type, catégories, puis tirage au sort d'un titre parmi les correspondances.
+
+### Accueil et catalogue
+- Hero tournant entre les titres récents (fondu, pause quand la télécommande est dessus).
+- Catalogue : choix de la catégorie avec compteurs, tri par date d'ajout, nom, année ou note, dans les
+  deux sens ; panneau de catégories sur Android TV.
+- Squelettes de chargement animés ; apparition des images en fondu.
+
 ### Interface
 - Nouvelle palette et tokens de design centralisés.
 - Contour de focus sur les cartes et les lignes pour la navigation à la télécommande.

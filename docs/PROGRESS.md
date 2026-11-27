@@ -6,7 +6,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 
 - Branche de travail : `claude/arkatv-excellence` (créée depuis `claude/arkatv-v1`, la 0.1.0 validée par
   l'utilisateur). Rien n'est poussé sur `main`. Aucune release publiée depuis cette branche.
-- Version : `0.2.0-dev` (versionCode 8).
+- Version : `0.2.0-dev` (versionCode 9).
 - CI : tests unitaires, lint et assemblage passent à chaque push.
 - **Rien n'a été exécuté sur un appareil.** L'environnement de développement ne peut ni compiler
   localement (dépôts Maven et SDK Android inaccessibles) ni lancer d'émulateur : chaque vérification
@@ -24,7 +24,7 @@ Document de reprise : une nouvelle session doit pouvoir repartir d'ici sans autr
 | Dernier catalogue conservé si l'actualisation échoue | fait, non testé sur appareil | `Repo.open` (`syncError`) |
 | Tokens de design, nouvelle palette | fait | `ui/Theme.kt`, `DESIGN_SYSTEM.md` |
 | Focus visible à la télécommande | partiel (cartes et lignes) | `Modifier.focusHighlight` |
-| Tests unitaires | 48 tests, 8 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
+| Tests unitaires | 53 tests, 8 classes (dont le cache Room et la recherche sur base en mémoire) | `app/src/test/` |
 | Signature stable des builds de debug | fait | `app/debug.keystore`, `app/build.gradle.kts` |
 | Films et séries lus par pages depuis la base (accueil, grilles), tris dans les grilles, position conservée au retour d'une fiche | fait, non testé sur appareil | `CatalogStore.loadSummary` / `vodPage`, `ui/CatalogGridScreen.kt`, `MainActivity.kt` |
 | Actualisation en flux : le catalogue est écrit en base au fil du téléchargement, en une transaction ; un échec laisse l'ancien catalogue intact | fait, testé unitairement, non testé sur appareil | `Repo.sync`, `CatalogStore.replaceBlocking` |
@@ -56,11 +56,13 @@ pour lecture ; aucune comparaison visuelle avec l'application n'a pu être faite
 | Planche | État dans le code |
 | --- | --- |
 | Design System (tokens, polices, logo, icônes, boutons, puces, cartes) | intégré |
-| Écrans 2 — Accueil | refait (mobile et TV) : hero, rangées, cartes |
-| Écrans 2 — Catalogue | en-tête, grille et puces au nouveau style ; panneau de catégories TV et feuille de tri à faire |
+| Écrans 2 — Accueil | refait (mobile et TV) : hero tournant (fondu 600 ms / 8 s, pause au focus), rangées, cartes, squelettes animés |
+| Écrans 2 — Catalogue | refait : catégorie et tri en feuilles (mobile), panneau de catégories avec compteurs (TV), sens du tri, squelette de grille ; filtres années / non vus / note à faire |
+| Écrans 2 — Découverte | fait : type, catégories, tirage au sort parmi les correspondances ; sans choix de durée (donnée absente des sources) |
+| Écrans 1 — Choix du profil | fait : profils locaux (5 max), données séparées par profil, gestion ; sans profil enfant verrouillé |
 | Navigation | barre inférieure mobile et barre latérale TV refaites |
-| Écrans 1 — Démarrage et sources | à faire |
-| Écrans 2 — Fiches film et série, Découverte | à faire |
+| Écrans 1 — Écran de démarrage, ajout et gestion des sources | à faire |
+| Écrans 2 — Fiches film et série | à faire |
 | Écrans 3 — Direct et guide | à faire |
 | Écrans 4 — Lecteur | à faire |
 | Écrans 5 — Recherche et Mon espace | à faire |
@@ -104,6 +106,10 @@ Connect, multiview, contrôle parental) ne seront dessinés qu'avec la fonctionn
   lecture reste possible pendant l'écriture.
 - **Films ou séries indisponibles chez le fournisseur** : toléré tant que rien n'avait été stocké pour ce
   type ; sinon l'actualisation échoue et l'ancien catalogue est conservé, plutôt que de le vider.
+- **Profils** : le profil principal garde les clés de stockage d'origine, donc tout ce qui existait avant
+  les profils lui appartient ; les autres profils ont des clés préfixées. Catalogue et sources partagés.
+- **Découverte** : tirage par position aléatoire parmi les correspondances comptées en base ; le tirage
+  suivant évite seulement de retomber sur le même titre.
 - **Lint** : la fiche détaillée charge ses données avec `LaunchedEffect` ; `produceState` y déclenchait un
   faux positif de la règle `ProduceStateDoesNotAssignValue`.
 

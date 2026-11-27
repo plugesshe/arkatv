@@ -63,7 +63,12 @@ import tv.arka.app.data.XtreamApi
 import java.util.UUID
 
 @Composable
-fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (String, List<Vod>) -> Unit) {
+fun ProfileScreen(
+    onAddSource: () -> Unit,
+    onOpen: (Vod) -> Unit,
+    onList: (String, List<Vod>) -> Unit,
+    onProfiles: () -> Unit,
+) {
     var liveFormat by remember { mutableStateOf(Store.liveFormat) }
     var toDelete by remember { mutableStateOf<Source?>(null) }
     var refreshHours by remember { mutableIntStateOf(Store.catalogRefreshHours) }
@@ -76,6 +81,22 @@ fun ProfileScreen(onAddSource: () -> Unit, onOpen: (Vod) -> Unit, onList: (Strin
             fontWeight = FontWeight.Black,
             modifier = Modifier.padding(start = 16.dp, top = 14.dp, bottom = 4.dp),
         )
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ProfileAvatar(Repo.activeProfile, size = 48.dp)
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                Text(Repo.activeProfile.name, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    (if (Repo.activeProfile.isMain) "Profil principal" else "Profil") + " · ${Repo.sources.size} source(s)",
+                    color = ArkaMuted,
+                    fontSize = 12.sp,
+                )
+            }
+            SecondaryButton("Changer de profil", onProfiles)
+        }
 
         SectionTitle("Sources")
         Repo.sources.forEach { source ->

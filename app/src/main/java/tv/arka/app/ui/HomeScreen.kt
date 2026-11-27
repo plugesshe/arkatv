@@ -1,5 +1,7 @@
 package tv.arka.app.ui
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -32,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -40,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -49,7 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import tv.arka.app.R
 import tv.arka.app.data.Category
 import tv.arka.app.data.Progress
@@ -63,35 +67,50 @@ import tv.arka.app.data.VodSort
  * On handsets, Films and Séries are reached from the chips at the top; on TV, from the side bar.
  */
 @Composable
-fun HomeScreen(onOpen: (Vod) -> Unit, onCatalog: (String, VodKind, String?, VodSort) -> Unit) {
+fun HomeScreen(
+    onOpen: (Vod) -> Unit,
+    onCatalog: (String, VodKind, String?, VodSort) -> Unit,
+    onDiscover: () -> Unit,
+    onProfiles: () -> Unit,
+) {
     val context = LocalContext.current
     val tv = LocalIsTv.current
     val latestMovies = Repo.latestMovies
     val latestSeries = Repo.latestSeries
-    val featured = remember(latestMovies, latestSeries) {
-        val pool = latestSeries.take(5) + latestMovies.take(5)
-        pool.firstOrNull { it.poster.isNotBlank() } ?: pool.firstOrNull()
+    // Up to four recent titles take turns in the hero; titles with artwork come first.
+    val heroPool = remember(latestMovies, latestSeries) {
+        val mixed = ArrayList<Vod>()
+        for (i in 0 until 4) {
+            latestSeries.getOrNull(i)?.let(mixed::add)
+            latestMovies.getOrNull(i)?.let(mixed::add)
+        }
+        (mixed.filter { it.poster.isNotBlank() } + mixed.filter { it.poster.isBlank() }).take(HERO_SLOTS)
     }
     val resume = Repo.progress
     val myList = Repo.myList
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = ArkaSpacing.xxl)) {
-        if (featured != null) {
+        if (heroPool.isNotEmpty()) {
             item {
                 Hero(
-                    vod = featured,
-                    onPlay = {
-                        if (featured.kind == VodKind.MOVIE) play(context, listOf(featured.toPlayItem()), 0)
-                        else onOpen(featured)
+                    pool = heroPool,
+                    onPlay = { vod ->
+                        if (vod.kind == VodKind.MOVIE) play(context, listOf(vod.toPlayItem()), 0) else onOpen(vod)
                     },
-                    onOpen = { onOpen(featured) },
+                    onOpen = onOpen,
                     onCatalog = onCatalog,
+                    onDiscover = onDiscover,
+                    onProfiles = onProfiles,
                 )
             }
         } else {
             item {
-                Column(Modifier.statusBarsPadding().padding(horizontal = ArkaTheme.margin, vertical = ArkaSpacing.md)) {
-                    Logo()
+                Row(
+                    Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = ArkaTheme.margin, vertical = ArkaSpacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Logo(Modifier.weight(1f))
+                    if (!tv) ProfileChip(onProfiles)
                 }
             }
         }
@@ -164,7 +183,7 @@ private fun CategoryVodRow(kind: VodKind, category: Category, onOpen: (Vod) -> U
                 repeat(3) {
                     Box(
                         Modifier.width(posterWidth).aspectRatio(2f / 3f)
-                            .clip(RoundedCornerShape(ArkaRadius.sm)).background(ArkaColors.Surface)
+                            .clip(RoundedCornerShape(ArkaRadius.sm)).skeleton()
                     )
                 }
             }
@@ -200,21 +219,55 @@ private fun EmptyState() {
     }
 }
 
+private const val HERO_SLOTS = 4
+private const val HERO_INTERVAL_MS = 8000L
+private const val HERO_FADE_MS = 600
+
+/** The active profile's avatar; opens the profile chooser. */
+@Composable
+private fun ProfileChip(onClick: () -> Unit) {
+    ProfileAvatar(
+        Repo.activeProfile,
+        size = 32.dp,
+        radius = ArkaRadius.sm,
+        modifier = Modifier.focusHighlight(ArkaRadius.sm, ArkaMotion.FOCUS_SCALE_BUTTON).clickable(onClick = onClick),
+    )
+}
+
+/**
+ * The hero cycles through [pool] with a 600 ms cross-fade every 8 s. The rotation pauses while the
+ * remote-control focus is inside the hero, so a title never changes under the viewer's finger.
+ */
 @Composable
 private fun Hero(
-    vod: Vod,
-    onPlay: () -> Unit,
-    onOpen: () -> Unit,
+    pool: List<Vod>,
+    onPlay: (Vod) -> Unit,
+    onOpen: (Vod) -> Unit,
     onCatalog: (String, VodKind, String?, VodSort) -> Unit,
+    onDiscover: () -> Unit,
+    onProfiles: () -> Unit,
 ) {
     val tv = LocalIsTv.current
     val margin = ArkaTheme.margin
+    var slot by remember(pool) { mutableIntStateOf(0) }
+    var focusInside by remember { mutableStateOf(false) }
+    val vod = pool[slot.coerceIn(0, pool.lastIndex)]
     val playLabel = if (vod.kind == VodKind.SERIES) "Voir" else "Lire"
     val inList = Repo.inMyList(vod)
+
+    LaunchedEffect(pool, focusInside) {
+        if (pool.size > 1 && !focusInside) {
+            while (true) {
+                delay(HERO_INTERVAL_MS)
+                slot = (slot + 1) % pool.size
+            }
+        }
+    }
+
     // On TV the main action takes the initial focus when the screen opens.
     val mainAction = remember { FocusRequester() }
     if (tv) {
-        LaunchedEffect(vod.id) {
+        LaunchedEffect(Unit) {
             try {
                 mainAction.requestFocus()
             } catch (e: IllegalStateException) {
@@ -223,19 +276,18 @@ private fun Hero(
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(if (tv) 300.dp else 520.dp)) {
-        if (vod.poster.isNotBlank()) {
-            AsyncImage(
-                model = vod.poster,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                alignment = Alignment.TopCenter,
-                modifier = if (tv) {
-                    Modifier.align(Alignment.TopEnd).fillMaxHeight().fillMaxWidth(0.6f)
-                } else {
-                    Modifier.fillMaxSize()
-                },
-            )
+    Box(Modifier.fillMaxWidth().height(if (tv) 300.dp else 520.dp).onFocusChanged { focusInside = it.hasFocus }) {
+        Crossfade(
+            targetState = vod,
+            animationSpec = tween(HERO_FADE_MS),
+            label = "hero",
+            modifier = if (tv) Modifier.align(Alignment.TopEnd).fillMaxHeight().fillMaxWidth(0.6f) else Modifier.fillMaxSize(),
+        ) { shown ->
+            if (shown.poster.isNotBlank()) {
+                ArkaImage(shown.poster, Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
+            } else {
+                Box(Modifier.fillMaxSize().background(ArkaColors.Surface))
+            }
         }
         // Legibility veil under the text: the only shadow the design system allows.
         Box(
@@ -262,18 +314,21 @@ private fun Hero(
 
         if (!tv) {
             Row(
-                Modifier.statusBarsPadding().padding(horizontal = margin, vertical = ArkaSpacing.md),
+                Modifier.fillMaxWidth().statusBarsPadding().padding(horizontal = margin, vertical = ArkaSpacing.md),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm),
             ) {
                 Logo(wordmark = false)
                 Spacer(Modifier.width(ArkaSpacing.xs))
                 if (Repo.movieCount > 0) {
-                    ArkaChip("Films", false) { onCatalog("Films", VodKind.MOVIE, null, VodSort.PROVIDER) }
+                    ArkaChip("Films", false) { onCatalog("Films", VodKind.MOVIE, null, VodSort.RECENT) }
                 }
                 if (Repo.seriesCount > 0) {
-                    ArkaChip("Séries", false) { onCatalog("Séries", VodKind.SERIES, null, VodSort.PROVIDER) }
+                    ArkaChip("Séries", false) { onCatalog("Séries", VodKind.SERIES, null, VodSort.RECENT) }
                 }
+                ArkaChip("Découvrir", false, onDiscover)
+                Spacer(Modifier.weight(1f))
+                ProfileChip(onProfiles)
             }
         }
 
@@ -319,12 +374,12 @@ private fun Hero(
             ) {
                 PrimaryButton(
                     playLabel,
-                    onPlay,
+                    { onPlay(vod) },
                     modifier = (if (tv) Modifier else Modifier.weight(1f)).focusRequester(mainAction),
                     icon = R.drawable.ic_arka_lire,
                 )
                 if (tv) {
-                    SecondaryButton("Plus d'informations", onOpen)
+                    SecondaryButton("Plus d'informations", { onOpen(vod) })
                 }
                 SquareButton(
                     icon = if (inList) R.drawable.ic_arka_valide else R.drawable.ic_arka_ajouter,
@@ -333,7 +388,22 @@ private fun Hero(
                     active = inList,
                 )
                 if (!tv) {
-                    SquareButton(R.drawable.ic_arka_info, "Plus d'informations", onOpen)
+                    SquareButton(R.drawable.ic_arka_info, "Plus d'informations", { onOpen(vod) })
+                }
+            }
+            if (pool.size > 1) {
+                // Position in the rotation: the current slot is a longer, lighter mark.
+                Row(
+                    Modifier.padding(top = ArkaSpacing.md).then(if (tv) Modifier else Modifier.fillMaxWidth()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp, if (tv) Alignment.Start else Alignment.CenterHorizontally),
+                ) {
+                    pool.indices.forEach { i ->
+                        Box(
+                            Modifier.height(3.dp).width(if (i == slot) 14.dp else 4.dp)
+                                .clip(RoundedCornerShape(ArkaRadius.pill))
+                                .background(if (i == slot) ArkaColors.TextPrimary else ArkaColors.TextDisabled)
+                        )
+                    }
                 }
             }
         }
@@ -364,12 +434,7 @@ private fun ResumeCard(entry: Progress, onClick: () -> Unit) {
                 .clickable(onClick = onClick),
         ) {
             if (entry.item.poster.isNotBlank()) {
-                AsyncImage(
-                    model = entry.item.poster,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                ArkaImage(entry.item.poster, Modifier.fillMaxSize())
             }
             LinearProgressIndicator(
                 progress = { (entry.position.toFloat() / entry.duration.coerceAtLeast(1)).coerceIn(0f, 1f) },

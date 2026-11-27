@@ -88,6 +88,16 @@ data class Catalog(
     val isEmpty: Boolean get() = channels.isEmpty() && movies.isEmpty() && series.isEmpty()
 }
 
+/** A local viewer profile: its own favourites, list, history and search history. No account involved. */
+data class Profile(val id: String, val name: String, val color: Int) {
+    val isMain: Boolean get() = id == MAIN_ID
+
+    companion object {
+        const val MAIN_ID = "default"
+        const val MAX = 5
+    }
+}
+
 /** What an Xtream provider says about the account. Zero means "not provided". */
 data class AccountInfo(
     val status: String,

@@ -1,6 +1,35 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package tv.arka.app.ui
 
 import androidx.annotation.DrawableRes
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import tv.arka.app.data.Profile
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -182,4 +211,151 @@ fun ArkaBadge(text: String, modifier: Modifier = Modifier, filled: Boolean = tru
             .then(if (filled) Modifier.background(ArkaColors.TextPrimary) else Modifier.border(1.dp, ArkaColors.TextPrimary, shape))
             .padding(horizontal = 5.dp, vertical = 1.dp),
     )
+}
+
+/** Loading placeholder: the surface colour with a soft light sweeping across every 1.6 s. */
+fun Modifier.skeleton(): Modifier = composed {
+    val transition = rememberInfiniteTransition(label = "skeleton")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1600, easing = LinearEasing), RepeatMode.Restart),
+        label = "phase",
+    )
+    drawBehind {
+        val band = size.width
+        val start = -band + phase * (size.width + band)
+        drawRect(
+            Brush.linearGradient(
+                colors = listOf(ArkaColors.Surface, ArkaColors.SurfaceHigh, ArkaColors.Surface),
+                start = Offset(start, 0f),
+                end = Offset(start + band, 0f),
+            )
+        )
+    }
+}
+
+/** A remote image that fades in over 150 ms once loaded; the caller draws the fallback underneath. */
+@Composable
+fun ArkaImage(
+    url: String,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
+    contentDescription: String? = null,
+) {
+    AsyncImage(
+        model = ImageRequest.Builder(LocalContext.current).data(url).crossfade(150).build(),
+        contentDescription = contentDescription,
+        contentScale = contentScale,
+        alignment = alignment,
+        modifier = modifier,
+    )
+}
+
+/** A panel of choices: a bottom sheet on handsets, a dialog on TV where sheets are awkward with a remote. */
+@Composable
+fun ArkaSheet(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    if (LocalIsTv.current) {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            containerColor = ArkaColors.SurfaceHigh,
+            title = { Text(title, style = ArkaTheme.type.heading) },
+            text = { Column(Modifier.verticalScroll(rememberScrollState()), content = content) },
+            confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer") } },
+        )
+    } else {
+        ModalBottomSheet(onDismissRequest = onDismiss, containerColor = ArkaColors.SurfaceHigh) {
+            Column(
+                Modifier.fillMaxWidth().navigationBarsPadding()
+                    .padding(start = ArkaSpacing.lg, end = ArkaSpacing.lg, bottom = ArkaSpacing.xl)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                Text(title, style = ArkaTheme.type.heading, fontWeight = FontWeight(700), modifier = Modifier.padding(bottom = ArkaSpacing.sm))
+                content()
+            }
+        }
+    }
+}
+
+/** One line of an [ArkaSheet]: the selected one is bold and carries a red check mark. */
+@Composable
+fun SheetOption(label: String, selected: Boolean, onClick: () -> Unit, trailing: String? = null) {
+    Row(
+        Modifier.fillMaxWidth()
+            .defaultMinSize(minHeight = controlHeight)
+            .focusHighlight(ArkaRadius.sm, 1f)
+            .clip(RoundedCornerShape(ArkaRadius.sm))
+            .clickable(onClick = onClick)
+            .padding(horizontal = ArkaSpacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = if (selected) ArkaColors.TextPrimary else ArkaColors.TextTertiary,
+            style = ArkaTheme.type.body,
+            fontWeight = if (selected) FontWeight(700) else FontWeight(400),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        if (trailing != null) {
+            Text(trailing, color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, modifier = Modifier.padding(start = ArkaSpacing.sm))
+        }
+        if (selected) {
+            ArkaIcon(R.drawable.ic_arka_valide, "Sélectionné", tint = ArkaColors.RedBright, size = 20.dp, modifier = Modifier.padding(start = ArkaSpacing.sm))
+        }
+    }
+}
+
+/** A segmented pair such as Décroissant / Croissant: the active side is light, as on the mock-up. */
+@Composable
+fun SegmentButton(label: String, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier
+            .height(controlHeight)
+            .focusHighlight(ArkaRadius.md, ArkaMotion.FOCUS_SCALE_BUTTON)
+            .clip(RoundedCornerShape(ArkaRadius.md))
+            .background(if (selected) ArkaColors.TextPrimary else ArkaColors.Surface)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(label, color = if (selected) ArkaColors.Background else ArkaColors.TextPrimary, style = ArkaTheme.type.label)
+    }
+}
+
+/** A profile shown as its initial on a tinted tile. */
+@Composable
+fun ProfileAvatar(profile: Profile, size: Dp, modifier: Modifier = Modifier, radius: Dp = ArkaRadius.md) {
+    val (background, foreground) = ArkaAvatarColors[profile.color.mod(ArkaAvatarColors.size)]
+    Box(
+        modifier.size(size).clip(RoundedCornerShape(radius)).background(background),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            profile.name.trim().take(1).uppercase().ifBlank { "?" },
+            color = foreground,
+            fontWeight = FontWeight(700),
+            fontSize = (size.value * 0.42f).sp,
+        )
+    }
+}
+
+/** A violet-outlined action: the accent reserved for the Discovery mode. */
+@Composable
+fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(ArkaRadius.md)
+    Box(
+        modifier
+            .height(controlHeight)
+            .focusHighlight(ArkaRadius.md, ArkaMotion.FOCUS_SCALE_BUTTON)
+            .clip(shape)
+            .background(ArkaColors.Surface)
+            .border(2.dp, ArkaColors.Violet, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = ArkaSpacing.lg),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(text, color = ArkaColors.TextPrimary, style = ArkaTheme.type.label, maxLines = 1)
+    }
 }

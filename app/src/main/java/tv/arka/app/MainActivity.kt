@@ -60,6 +60,7 @@ import tv.arka.app.ui.ArkaTheme
 import tv.arka.app.ui.CatalogGridScreen
 import tv.arka.app.ui.CatalogGridState
 import tv.arka.app.ui.DetailScreen
+import tv.arka.app.ui.DiscoverScreen
 import tv.arka.app.ui.GridScreen
 import tv.arka.app.ui.GuideScreen
 import tv.arka.app.ui.HomeScreen
@@ -67,6 +68,7 @@ import tv.arka.app.ui.LiveScreen
 import tv.arka.app.ui.LocalIsTv
 import tv.arka.app.ui.Logo
 import tv.arka.app.ui.ProfileScreen
+import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
 import tv.arka.app.ui.focusHighlight
 import tv.arka.app.ui.isTelevision
@@ -96,6 +98,7 @@ private enum class Destination(val label: String, @DrawableRes val icon: Int) {
     LIVE("Direct", R.drawable.ic_arka_direct),
     GUIDE("Guide TV", R.drawable.ic_arka_guide_tv),
     MY_LIST("Ma liste", R.drawable.ic_arka_ma_liste),
+    DISCOVER("Découvrir", R.drawable.ic_arka_decouverte),
     PROFILE("Mon espace", R.drawable.ic_arka_mon_espace),
 }
 
@@ -107,13 +110,11 @@ private sealed interface Screen {
     data object AddSource : Screen
     data class Detail(val vod: Vod) : Screen
 
-    /** A category (or a whole kind) browsed page by page; [state] keeps its items and scroll position. */
-    class Catalog(
-        val title: String,
-        val kind: VodKind,
-        val categoryId: String?,
-        val state: CatalogGridState,
-    ) : Screen
+    data object Discover : Screen
+    data object Profiles : Screen
+
+    /** Films or series browsed page by page; [state] keeps the category, order, items and scroll position. */
+    class Catalog(val title: String, val kind: VodKind, val state: CatalogGridState) : Screen
 
     data class StaticGrid(val title: String, val items: List<Vod>) : Screen
 }
@@ -136,12 +137,20 @@ private fun App() {
         return
     }
 
+    // With several profiles, the app opens on "Qui regarde ?".
+    if (Repo.profiles.size > 1 && !Repo.profileChosen) {
+        ProfilesScreen(onDone = { Repo.profileChosen = true })
+        return
+    }
+
     BackHandler(enabled = stack.size > 1) { pop() }
     BackHandler(enabled = stack.size == 1 && destination != Destination.HOME) { destination = Destination.HOME }
 
     val openVod: (Vod) -> Unit = { stack.add(Screen.Detail(it)) }
-    val openCatalog: (String, VodKind, String?, VodSort) -> Unit = { title, kind, categoryId, sort ->
-        stack.add(Screen.Catalog(title, kind, categoryId, CatalogGridState(sort)))
+    // The screen title is the kind; the category opened from a home row becomes the grid's filter.
+    val openCatalog: (String, VodKind, String?, VodSort) -> Unit = { _, kind, categoryId, sort ->
+        val title = if (kind == VodKind.MOVIE) "Films" else "Séries"
+        stack.add(Screen.Catalog(title, kind, CatalogGridState(sort, categoryId)))
     }
 
     val index = stack.lastIndex
@@ -154,13 +163,16 @@ private fun App() {
                 onCatalog = openCatalog,
                 onList = { title, items -> stack.add(Screen.StaticGrid(title, items)) },
                 onAddSource = { stack.add(Screen.AddSource) },
+                onDiscover = { stack.add(Screen.Discover) },
+                onProfiles = { stack.add(Screen.Profiles) },
             )
+            Screen.Discover -> DiscoverScreen(onBack = pop, onOpen = openVod)
+            Screen.Profiles -> ProfilesScreen(onDone = pop)
             Screen.AddSource -> AddSourceScreen(onBack = pop, onDone = pop)
             is Screen.Detail -> DetailScreen(screen.vod, onBack = pop)
             is Screen.Catalog -> CatalogGridScreen(
                 title = screen.title,
                 kind = screen.kind,
-                categoryId = screen.categoryId,
                 state = screen.state,
                 onBack = pop,
                 onOpen = openVod,
@@ -178,6 +190,8 @@ private fun MainShell(
     onCatalog: (String, VodKind, String?, VodSort) -> Unit,
     onList: (String, List<Vod>) -> Unit,
     onAddSource: () -> Unit,
+    onDiscover: () -> Unit,
+    onProfiles: () -> Unit,
 ) {
     // The film and series grids opened from the TV side bar keep their state while the user moves around.
     val movies = remember { CatalogGridState() }
@@ -186,13 +200,14 @@ private fun MainShell(
 
     val content: @Composable () -> Unit = {
         when (destination) {
-            Destination.HOME -> HomeScreen(onOpen = onOpen, onCatalog = onCatalog)
+            Destination.HOME -> HomeScreen(onOpen, onCatalog, onDiscover, onProfiles)
             Destination.LIVE -> LiveScreen()
             Destination.GUIDE -> GuideScreen()
             Destination.SEARCH -> SearchScreen(onOpen = onOpen)
-            Destination.PROFILE -> ProfileScreen(onAddSource = onAddSource, onOpen = onOpen, onList = onList)
-            Destination.MOVIES -> CatalogGridScreen("Films", VodKind.MOVIE, null, movies, onBack = goHome, onOpen = onOpen)
-            Destination.SERIES -> CatalogGridScreen("Séries", VodKind.SERIES, null, series, onBack = goHome, onOpen = onOpen)
+            Destination.PROFILE -> ProfileScreen(onAddSource, onOpen, onList, onProfiles)
+            Destination.MOVIES -> CatalogGridScreen("Films", VodKind.MOVIE, movies, onBack = goHome, onOpen = onOpen)
+            Destination.SERIES -> CatalogGridScreen("Séries", VodKind.SERIES, series, onBack = goHome, onOpen = onOpen)
+            Destination.DISCOVER -> DiscoverScreen(onBack = goHome, onOpen = onOpen)
             Destination.MY_LIST -> GridScreen("Ma liste", Repo.myList, onBack = goHome, onOpen = onOpen)
         }
     }
@@ -272,6 +287,7 @@ private fun TvShell(current: Destination, onSelect: (Destination) -> Unit, conte
         when (item) {
             Destination.MOVIES -> Repo.movieCount > 0
             Destination.SERIES -> Repo.seriesCount > 0
+            Destination.DISCOVER -> Repo.movieCount > 0 || Repo.seriesCount > 0
             else -> true
         }
     }

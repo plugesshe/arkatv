@@ -70,6 +70,9 @@ data class ProgramRow(
     val description: String,
 )
 
+/** Number of films or series in a category. */
+data class CategoryCount(val categoryId: String, val total: Int)
+
 @Dao
 interface CatalogDao {
     @Query("SELECT * FROM channels WHERE sourceId = :sourceId ORDER BY pos")
@@ -93,8 +96,11 @@ interface CatalogDao {
     @Query("SELECT COUNT(*) FROM vods WHERE sourceId = :sourceId AND kind = :kind")
     suspend fun countVods(sourceId: String, kind: String): Int
 
-    @Query("SELECT categoryId FROM vods WHERE sourceId = :sourceId AND kind = :kind GROUP BY categoryId")
-    suspend fun usedCategories(sourceId: String, kind: String): List<String>
+    @Query("SELECT categoryId, COUNT(*) AS total FROM vods WHERE sourceId = :sourceId AND kind = :kind GROUP BY categoryId")
+    suspend fun categoryCounts(sourceId: String, kind: String): List<CategoryCount>
+
+    @RawQuery
+    suspend fun queryInt(query: SupportSQLiteQuery): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChannels(rows: List<ChannelRow>)
