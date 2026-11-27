@@ -54,7 +54,14 @@ data class Vod(
     val added: Long = 0,
     val plot: String = "",
     val year: String = "",
+    /** Language and quality as written by the provider ("FR 4K"), empty when it says nothing. */
+    val tags: String = "",
+    /** Wide picture, known once the title has been matched with TMDB. */
+    val backdrop: String = "",
 )
+
+/** A home row built by ArkaTV from matched titles, instead of a provider category. */
+class SmartRow(val title: String, val items: List<Vod>)
 
 data class Episode(
     val id: String,

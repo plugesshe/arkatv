@@ -15,6 +15,17 @@
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
+### Catalogue enrichi (TMDB)
+- Avec la clé TMDB de l'utilisateur (saisie dans l'app, chiffrée, jamais dans le dépôt ni dans l'APK) :
+  reconnaissance des films et séries en arrière-plan, les plus récents d'abord.
+- Accueil organisé par ArkaTV : films et séries du moment, mieux notés, rangées par genre, une seule
+  tuile par œuvre même si la source en propose plusieurs versions. Désactivable dans les paramètres.
+- Mise en avant avec les images larges de TMDB ; titres, affiches et résumés en français quand ils existent.
+- Fiche : choix de la version (langue, qualité) quand la source en propose plusieurs.
+- Saisie de la clé depuis un téléphone ou un ordinateur : page servie par la TV sur le réseau local,
+  protégée par un code à quatre chiffres affiché à l'écran.
+- Langue et qualité lues dans le nom du fournisseur et affichées en étiquette sur l'affiche et la fiche.
+
 ### Titres
 - Les titres sont affichés sans les marques du fournisseur (« FR - », « 4K-D+ - », année et pays entre
   parenthèses) : affiches, mise en avant, fiches, reprises, épisodes. La recherche continue de porter

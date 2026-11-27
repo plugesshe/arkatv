@@ -127,6 +127,16 @@ object Store {
         get() = p().getString("active", null)
         set(value) = p().edit().putString("active", value).apply()
 
+    /** The user's own TMDB read token. Kept encrypted, never written anywhere else. */
+    var tmdbToken: String
+        get() = readBlob("tmdb").orEmpty()
+        set(value) = writeBlob("tmdb", value)
+
+    /** Home built from ArkaTV's own rows (matched titles) rather than from provider categories. */
+    var smartHome: Boolean
+        get() = p().getBoolean("smart_home", true)
+        set(value) = p().edit().putBoolean("smart_home", value).apply()
+
     var liveFormat: String
         get() = p().getString("live_format", "ts") ?: "ts"
         set(value) = p().edit().putString("live_format", value).apply()

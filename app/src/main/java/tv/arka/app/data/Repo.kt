@@ -11,6 +11,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.arka.app.data.db.ArkaDatabase
@@ -90,6 +92,163 @@ object Repo {
     /** Live category ids the user chose to hide. */
     var hiddenCategories by mutableStateOf(setOf<String>())
 
+    // ----- Catalogue enriched with TMDB (the user's own key).
+
+    var tmdbToken by mutableStateOf("")
+    var tmdbStatus by mutableStateOf("")
+    var tmdbMatched by mutableIntStateOf(0)
+    var tmdbChecked by mutableIntStateOf(0)
+    var smartHome by mutableStateOf(true)
+
+    /** Home rows built from matched titles; empty until enough of them are known. */
+    var smartRows by mutableStateOf(listOf<SmartRow>())
+
+    /** Popular matched titles that have a wide picture, for the home hero. */
+    var heroPicks by mutableStateOf(listOf<Vod>())
+    private var tmdbJob: Job? = null
+
+    fun updateTmdbToken(token: String) {
+        val clean = token.trim()
+        Store.tmdbToken = clean
+        tmdbToken = clean
+        tmdbStatus = ""
+        tmdbJob?.cancel()
+        if (clean.isEmpty()) {
+            smartRows = emptyList()
+            heroPicks = emptyList()
+        } else {
+            startEnrichment()
+        }
+    }
+
+    fun updateSmartHome(enabled: Boolean) {
+        Store.smartHome = enabled
+        smartHome = enabled
+    }
+
+    /**
+     * Looks up, in the background and a few per second, the titles TMDB has not been asked about yet,
+     * newest first, and rebuilds the home rows as matches come in. Stops when everything is known.
+     */
+    private fun startEnrichment() {
+        val source = active ?: return
+        val catalogStore = store ?: return
+        val token = tmdbToken
+        if (token.isBlank() || source.type != "xtream") return
+        if (tmdbJob?.isActive == true) {
+            scope.launch { refreshSmartRows(source, catalogStore) }
+            return
+        }
+        tmdbJob = scope.launch {
+            try {
+                refreshSmartRows(source, catalogStore)
+                // The same work often appears several times (4K, HD, languages): one request serves all.
+                val known = HashMap<String, Tmdb.Match?>()
+                var sinceRefresh = 0
+                var working = true
+                while (working && isActive) {
+                    working = false
+                    for (kind in listOf(VodKind.MOVIE, VodKind.SERIES)) {
+                        val pending = withContext(Dispatchers.IO) { catalogStore.tmdbPending(source, kind, TMDB_BATCH) }
+                        if (pending.isEmpty()) continue
+                        working = true
+                        tmdbStatus = "analyse en cours"
+                        withContext(Dispatchers.IO) {
+                            for (title in pending) {
+                                val clean = TitleCleaner.clean(title.name)
+                                val year = clean.year.ifBlank { title.year.take(4) }.takeIf { it.toIntOrNull() != null }.orEmpty()
+                                val key = kind.name + "|" + TextNormalizer.normalize(clean.title) + "|" + year
+                                val match = if (known.containsKey(key)) {
+                                    known[key]
+                                } else {
+                                    delay(TMDB_PAUSE_MS)
+                                    val found = Tmdb.search(token, kind == VodKind.MOVIE, clean.title, year)
+                                    known[key] = found
+                                    found
+                                }
+                                catalogStore.saveTmdb(source, kind, title.streamId, match, System.currentTimeMillis())
+                            }
+                        }
+                        sinceRefresh += pending.size
+                        val counts = withContext(Dispatchers.IO) { catalogStore.tmdbCounts(source) }
+                        tmdbMatched = counts.first
+                        tmdbChecked = counts.second
+                    }
+                    if (sinceRefresh >= TMDB_REFRESH_EVERY) {
+                        sinceRefresh = 0
+                        refreshSmartRows(source, catalogStore)
+                    }
+                }
+                refreshSmartRows(source, catalogStore)
+                tmdbStatus = "à jour"
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Http.StatusException) {
+                tmdbStatus = if (e.code == 401) "clé refusée par TMDB" else "TMDB a répondu ${e.code}, reprise au prochain lancement"
+            } catch (e: Exception) {
+                tmdbStatus = "interrompu (réseau), reprise au prochain lancement"
+            }
+        }
+    }
+
+    private suspend fun refreshSmartRows(source: Source, catalogStore: CatalogStore) {
+        try {
+            val built = withContext(Dispatchers.IO) {
+                val counts = catalogStore.tmdbCounts(source)
+                val rows = ArrayList<SmartRow>()
+                fun add(title: String, items: List<Vod>) {
+                    if (items.size >= SMART_ROW_MIN) rows.add(SmartRow(title, items))
+                }
+                val trendingMovies = catalogStore.smartRow(source, VodKind.MOVIE, null, false, SMART_ROW_SIZE)
+                val trendingSeries = catalogStore.smartRow(source, VodKind.SERIES, null, false, SMART_ROW_SIZE)
+                add("Films du moment", trendingMovies)
+                add("Séries du moment", trendingSeries)
+                add("Films les mieux notés", catalogStore.smartRow(source, VodKind.MOVIE, null, true, SMART_ROW_SIZE))
+                add("Séries les mieux notées", catalogStore.smartRow(source, VodKind.SERIES, null, true, SMART_ROW_SIZE))
+                for ((id, name) in Tmdb.movieGenres) add(name, catalogStore.smartRow(source, VodKind.MOVIE, id, false, SMART_ROW_SIZE))
+                for ((id, name) in Tmdb.seriesGenres) add(name, catalogStore.smartRow(source, VodKind.SERIES, id, false, SMART_ROW_SIZE))
+                val hero = ArrayList<Vod>()
+                for (i in 0 until 4) {
+                    trendingSeries.filter { it.backdrop.isNotBlank() }.getOrNull(i)?.let(hero::add)
+                    trendingMovies.filter { it.backdrop.isNotBlank() }.getOrNull(i)?.let(hero::add)
+                }
+                Triple(rows, hero.take(5), counts)
+            }
+            if (active?.id == source.id && tmdbToken.isNotBlank()) {
+                smartRows = built.first
+                heroPicks = built.second
+                tmdbMatched = built.third.first
+                tmdbChecked = built.third.second
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // The provider's own rows stay in use.
+        }
+    }
+
+    /** The versions of this title the source offers, when it has been matched; empty otherwise. */
+    suspend fun variants(vod: Vod): List<Vod> {
+        val source = active ?: return emptyList()
+        val catalogStore = store ?: return emptyList()
+        if (source.type != "xtream") return emptyList()
+        return withContext(Dispatchers.IO) {
+            try {
+                catalogStore.variants(source, vod.kind, vod.id)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                emptyList()
+            }
+        }
+    }
+
+    private const val TMDB_BATCH = 20
+    private const val TMDB_PAUSE_MS = 280L
+    private const val TMDB_REFRESH_EVERY = 100
+    private const val SMART_ROW_SIZE = 24
+    private const val SMART_ROW_MIN = 6
+
     /** Categories hidden from child profiles, as "live:<id>", "movie:<id>" or "series:<id>". */
     var lockedCategories by mutableStateOf(setOf<String>())
 
@@ -139,6 +298,8 @@ object Repo {
     private val rowCache = HashMap<String, List<Vod>>()
 
     fun init(context: Context) {
+        tmdbToken = Store.tmdbToken
+        smartHome = Store.smartHome
         if (initialised) return
         initialised = true
         store = CatalogStore(ArkaDatabase.create(context.applicationContext))
@@ -283,6 +444,13 @@ object Repo {
         seriesCategoryCounts = seriesCounts
         rowCache.clear()
         detailsCache.clear()
+        if (summary != null) {
+            startEnrichment()
+        } else {
+            tmdbJob?.cancel()
+            smartRows = emptyList()
+            heroPicks = emptyList()
+        }
     }
 
     private fun hasContent(): Boolean = channels.isNotEmpty() || movieCount > 0 || seriesCount > 0

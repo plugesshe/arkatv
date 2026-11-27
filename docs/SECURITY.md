@@ -67,3 +67,12 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
 - Le code n'est jamais conservé : seule une empreinte SHA-256 salée l'est, dans les préférences chiffrées.
 - Les catégories masquées sont filtrées dans les requêtes du catalogue elles-mêmes, pas seulement à l'affichage.
 - Limite connue : un contenu déjà présent dans « Ma liste » ou l'historique d'un profil y reste visible.
+
+## TMDB et saisie à distance
+
+- La clé TMDB appartient à l'utilisateur : saisie dans l'application, conservée chiffrée, envoyée
+  uniquement à `api.themoviedb.org` en HTTPS. Elle n'est ni dans le dépôt, ni dans l'APK, ni dans les journaux.
+- Seuls des titres nettoyés et des années sont envoyés à TMDB. Sans clé, aucune requête n'est faite.
+- La page de saisie à distance est en HTTP sur le réseau local : elle n'existe que tant que le bloc de
+  réglages est affiché, demande un code à quatre chiffres tiré au hasard et se ferme après cinq erreurs
+  ou dès qu'une valeur est acceptée. À n'utiliser que sur un réseau domestique.

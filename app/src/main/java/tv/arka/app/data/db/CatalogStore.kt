@@ -12,6 +12,7 @@ import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
 import tv.arka.app.data.TitleCleaner
+import tv.arka.app.data.Tmdb
 import tv.arka.app.data.VodFilter
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.VodSort
@@ -184,6 +185,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         // Shown without the provider's tags; the search still runs on the stored name.
         val clean = TitleCleaner.clean(row.name)
         return Vod(
+            tags = clean.tags,
             id = if (api != null) row.streamId else url,
             kind = kind,
             name = clean.title,
@@ -429,7 +431,109 @@ class CatalogStore(private val database: ArkaDatabase) {
             dao.deleteVods(sourceId)
             dao.deleteCategories(sourceId)
             dao.deletePrograms(sourceId)
+            dao.deleteTmdb(sourceId)
         }
+    }
+
+    // ----- TMDB matches. They are keyed by the provider's stream id, so they survive catalogue refreshes.
+
+    class PendingTitle(val streamId: String, val name: String, val year: String)
+
+    /** Titles never looked up yet, newest first. Only Xtream sources have stable stream ids. */
+    suspend fun tmdbPending(source: Source, kind: VodKind, limit: Int): List<PendingTitle> {
+        val sql = "SELECT v.* FROM vods v LEFT JOIN tmdb t ON t.sourceId = v.sourceId AND t.kind = v.kind" +
+            " AND t.streamId = v.streamId WHERE v.sourceId = ? AND v.kind = ? AND v.streamId != ''" +
+            " AND t.streamId IS NULL ORDER BY v.addedAt DESC, v.pos LIMIT ?"
+        return dao.queryVods(SimpleSQLiteQuery(sql, arrayOf<Any>(source.id, kindName(kind), limit)))
+            .map { PendingTitle(it.streamId, it.name, it.year) }
+    }
+
+    suspend fun saveTmdb(source: Source, kind: VodKind, streamId: String, match: Tmdb.Match?, now: Long): TmdbRow {
+        val row = TmdbRow(
+            sourceId = source.id,
+            kind = kindName(kind),
+            streamId = streamId,
+            tmdbId = match?.id ?: 0,
+            title = match?.title.orEmpty(),
+            year = match?.year.orEmpty(),
+            genres = match?.genres?.joinToString(",", prefix = ",", postfix = ",").orEmpty(),
+            popularity = match?.popularity ?: 0.0,
+            rating = match?.rating ?: 0.0,
+            votes = match?.votes ?: 0,
+            poster = match?.poster.orEmpty(),
+            backdrop = match?.backdrop.orEmpty(),
+            overview = match?.overview.orEmpty(),
+            checkedAt = now,
+        )
+        dao.insertTmdb(listOf(row))
+        return row
+    }
+
+    /** Matched and looked-up counts, for the settings screen. */
+    suspend fun tmdbCounts(source: Source): Pair<Int, Int> =
+        dao.countTmdbMatched(source.id) to dao.countTmdbChecked(source.id)
+
+    /**
+     * A row of matched titles: one entry per work (the provider's duplicate versions are merged),
+     * most popular first or best rated first, optionally of one TMDB genre.
+     */
+    suspend fun smartRow(source: Source, kind: VodKind, genreId: Int?, byRating: Boolean, limit: Int): List<Vod> {
+        val sql = StringBuilder(
+            "SELECT t.* FROM tmdb t JOIN vods v ON v.sourceId = t.sourceId AND v.kind = t.kind AND v.streamId = t.streamId" +
+                " WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0"
+        )
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(kindName(kind))
+        if (genreId != null) {
+            sql.append(" AND t.genres LIKE ?")
+            args.add("%,$genreId,%")
+        }
+        if (byRating) sql.append(" AND t.votes >= 300")
+        lockFilter(sql, args, kindName(kind))
+        sql.append(" GROUP BY t.tmdbId ORDER BY ").append(if (byRating) "t.rating DESC" else "t.popularity DESC")
+            .append(" LIMIT ?")
+        args.add(limit)
+        val matches = dao.queryTmdb(SimpleSQLiteQuery(sql.toString(), args.toTypedArray()))
+        if (matches.isEmpty()) return emptyList()
+        val ids = matches.map { it.streamId }
+        val rows = dao.queryVods(
+            SimpleSQLiteQuery(
+                "SELECT * FROM vods WHERE sourceId = ? AND kind = ? AND streamId IN (" + ids.joinToString(",") { "?" } + ")",
+                (listOf<Any>(source.id, kindName(kind)) + ids).toTypedArray(),
+            )
+        ).associateBy { it.streamId }
+        val api = apiOf(source)
+        return matches.mapNotNull { match ->
+            rows[match.streamId]?.let { enriched(vodOf(it, kind, api), match) }
+        }
+    }
+
+    private fun enriched(vod: Vod, match: TmdbRow): Vod = vod.copy(
+        name = match.title.ifBlank { vod.name },
+        poster = match.poster.ifBlank { vod.poster },
+        backdrop = match.backdrop,
+        plot = match.overview.ifBlank { vod.plot },
+        rating = if (match.rating > 0) Tmdb.ratingText(match.rating) else vod.rating,
+        year = match.year.ifBlank { vod.year },
+    )
+
+    /** The other versions of the same work offered by the source (4K, HD, another language…). */
+    suspend fun variants(source: Source, kind: VodKind, streamId: String): List<Vod> {
+        val tmdbId = dao.tmdbIdOf(source.id, kindName(kind), streamId) ?: return emptyList()
+        if (tmdbId <= 0) return emptyList()
+        val sql = StringBuilder(
+            "SELECT v.* FROM vods v JOIN tmdb t ON t.sourceId = v.sourceId AND t.kind = v.kind AND t.streamId = v.streamId" +
+                " WHERE v.sourceId = ? AND v.kind = ? AND t.tmdbId = ?"
+        )
+        val args = ArrayList<Any>()
+        args.add(source.id)
+        args.add(kindName(kind))
+        args.add(tmdbId)
+        lockFilter(sql, args, kindName(kind))
+        sql.append(" ORDER BY v.pos LIMIT 12")
+        val api = apiOf(source)
+        return dao.queryVods(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).map { vodOf(it, kind, api) }
     }
 
     companion object {

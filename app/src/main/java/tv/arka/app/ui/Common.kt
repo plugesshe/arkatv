@@ -238,6 +238,10 @@ fun Poster(vod: Vod, modifier: Modifier = Modifier, highlight: String = "", onCl
             } else {
                 ArkaImage(vod.poster, Modifier.fillMaxSize(), onError = { failed = true })
             }
+            // Language and quality, when the provider states them.
+            if (vod.tags.isNotBlank()) {
+                ArkaBadge(vod.tags, Modifier.align(Alignment.TopStart).padding(6.dp))
+            }
         }
         Text(
             highlighted(vod.name, highlight),

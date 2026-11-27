@@ -70,6 +70,28 @@ data class ProgramRow(
     val description: String,
 )
 
+/**
+ * What TMDB says about one film or series of a source. [tmdbId] 0 records "looked up, not found",
+ * so the title is not asked again. [genres] is ",28,12," so that one genre can be matched with LIKE.
+ */
+@Entity(tableName = "tmdb", primaryKeys = ["sourceId", "kind", "streamId"])
+data class TmdbRow(
+    val sourceId: String,
+    val kind: String,
+    val streamId: String,
+    val tmdbId: Int,
+    val title: String,
+    val year: String,
+    val genres: String,
+    val popularity: Double,
+    val rating: Double,
+    val votes: Int,
+    val poster: String,
+    val backdrop: String,
+    val overview: String,
+    val checkedAt: Long,
+)
+
 /** Number of films or series in a category. */
 data class CategoryCount(val categoryId: String, val total: Int)
 
@@ -101,6 +123,24 @@ interface CatalogDao {
 
     @RawQuery
     suspend fun queryInt(query: SupportSQLiteQuery): Int
+
+    @RawQuery
+    suspend fun queryTmdb(query: SupportSQLiteQuery): List<TmdbRow>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTmdb(rows: List<TmdbRow>)
+
+    @Query("SELECT COUNT(*) FROM tmdb WHERE sourceId = :sourceId AND tmdbId > 0")
+    suspend fun countTmdbMatched(sourceId: String): Int
+
+    @Query("SELECT COUNT(*) FROM tmdb WHERE sourceId = :sourceId")
+    suspend fun countTmdbChecked(sourceId: String): Int
+
+    @Query("SELECT tmdbId FROM tmdb WHERE sourceId = :sourceId AND kind = :kind AND streamId = :streamId")
+    suspend fun tmdbIdOf(sourceId: String, kind: String, streamId: String): Int?
+
+    @Query("DELETE FROM tmdb WHERE sourceId = :sourceId")
+    suspend fun deleteTmdb(sourceId: String)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertChannels(rows: List<ChannelRow>)
@@ -147,8 +187,8 @@ interface CatalogDao {
 }
 
 @Database(
-    entities = [ChannelRow::class, VodRow::class, CategoryRow::class, ProgramRow::class],
-    version = 2,
+    entities = [ChannelRow::class, VodRow::class, CategoryRow::class, ProgramRow::class, TmdbRow::class],
+    version = 3,
     exportSchema = false,
 )
 abstract class ArkaDatabase : RoomDatabase() {

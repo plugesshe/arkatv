@@ -179,3 +179,17 @@ Compilé en CI, non testé sur appareil par l'auteur.
 | Son de navigation sur TV | fait |
 | Replay des chaînes (catch-up) | à faire |
 | Catalogue réorganisé avec TMDB (clé saisie par l'utilisateur), bandes-annonces | à faire |
+
+## Lot « TMDB, titres et versions » (27/11/2026)
+
+Compilé en CI ; l'API TMDB n'a pas pu être appelée depuis l'environnement de développement, donc le
+rapprochement n'a été vérifié que par des tests sur des réponses d'exemple. À valider sur appareil.
+
+| Sujet | État |
+|---|---|
+| Nettoyage des titres, étiquettes langue / qualité | fait |
+| Rapprochement TMDB en arrière-plan, rangées ArkaTV, images larges | fait, à valider |
+| Choix de la version dans la fiche | fait, à valider |
+| Saisie de la clé depuis un autre appareil | fait, à valider |
+| Filtres langue / qualité dans le catalogue | à faire |
+| Bandes-annonces | à décider (YouTube) |

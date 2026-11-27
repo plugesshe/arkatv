@@ -115,6 +115,7 @@ fun DetailScreen(vod: Vod, onBack: () -> Unit, onOpen: (Vod) -> Unit) {
         loaded?.duration.orEmpty(),
         loaded?.genre.orEmpty(),
         vodMeta(vod.copy(year = "")),
+        vod.tags,
     ).filter { it.isNotBlank() }.joinToString(" · ")
 
     // The main action: there is exactly one red button on the sheet.
@@ -167,6 +168,7 @@ fun DetailScreen(vod: Vod, onBack: () -> Unit, onOpen: (Vod) -> Unit) {
                 modifier = Modifier.padding(top = ArkaSpacing.sm),
             )
         }
+        VariantChips(vod, onOpen)
     }
     val mainButton: @Composable (Modifier) -> Unit = { modifier ->
         Column(modifier) {

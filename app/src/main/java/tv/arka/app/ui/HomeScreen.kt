@@ -81,7 +81,10 @@ fun HomeScreen(
     val latestMovies = Repo.latestMovies
     val latestSeries = Repo.latestSeries
     // Up to four recent titles take turns in the hero; titles with artwork come first.
-    val heroPool = remember(latestMovies, latestSeries) {
+    // ArkaTV's own rows, once enough titles have been matched; the provider's categories otherwise.
+    val smartRows = if (Repo.smartHome) Repo.smartRows else emptyList()
+    val heroPicks = if (Repo.smartHome) Repo.heroPicks else emptyList()
+    val heroPool = if (heroPicks.isNotEmpty()) heroPicks else remember(latestMovies, latestSeries) {
         val mixed = ArrayList<Vod>()
         for (i in 0 until 4) {
             latestSeries.getOrNull(i)?.let(mixed::add)
@@ -158,14 +161,21 @@ fun HomeScreen(
                 }
             }
         }
-        items(Repo.vodCategories) { category ->
-            CategoryVodRow(VodKind.MOVIE, category, onOpen) {
-                onCatalog(category.name, VodKind.MOVIE, category.id, VodSort.PROVIDER)
-            }
+        items(smartRows) { row ->
+            VodRow(row.title, row.items, onOpen)
         }
-        items(Repo.seriesCategories) { category ->
-            CategoryVodRow(VodKind.SERIES, category, onOpen) {
-                onCatalog(category.name, VodKind.SERIES, category.id, VodSort.PROVIDER)
+        // The provider's categories stay on the home screen until ArkaTV has enough rows of its own;
+        // they remain available at any time from Films and Séries.
+        if (smartRows.size < 6) {
+            items(Repo.vodCategories) { category ->
+                CategoryVodRow(VodKind.MOVIE, category, onOpen) {
+                    onCatalog(category.name, VodKind.MOVIE, category.id, VodSort.PROVIDER)
+                }
+            }
+            items(Repo.seriesCategories) { category ->
+                CategoryVodRow(VodKind.SERIES, category, onOpen) {
+                    onCatalog(category.name, VodKind.SERIES, category.id, VodSort.PROVIDER)
+                }
             }
         }
     }
@@ -299,8 +309,9 @@ private fun Hero(
             label = "hero",
             modifier = if (tv) Modifier.align(Alignment.TopEnd).fillMaxHeight().fillMaxWidth(0.6f) else Modifier.fillMaxSize(),
         ) { shown ->
-            if (shown.poster.isNotBlank()) {
-                ArkaImage(shown.poster, Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
+            val picture = shown.backdrop.ifBlank { shown.poster }
+            if (picture.isNotBlank()) {
+                ArkaImage(picture, Modifier.fillMaxSize(), alignment = Alignment.TopCenter)
             } else {
                 Box(Modifier.fillMaxSize().background(ArkaColors.Surface))
             }

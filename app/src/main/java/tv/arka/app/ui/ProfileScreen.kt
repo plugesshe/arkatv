@@ -351,6 +351,7 @@ fun ProfileScreen(
 
         if (section == SECTION_SETTINGS) {
         UpdateSettings()
+        TmdbSettings()
         ParentalSettings(onParental)
         Text(
             "Format des chaînes en direct (Xtream)",

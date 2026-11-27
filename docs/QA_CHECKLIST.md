@@ -149,3 +149,13 @@ un vrai téléphone et une vraie Android TV.
 - [ ] Profil enfant : pas d'entrée Sources ni Paramètres ; code demandé pour passer à un autre profil.
 - [ ] Changement de tuile sur TV : plus de tremblement ; son de navigation présent.
 - [ ] Reprise d'un épisode depuis l'accueil : « Épisodes » apparaît, flèche du bas ouvre les épisodes.
+
+## TMDB — à vérifier sur appareil
+
+- [ ] Paramètres › Catalogue enrichi : « Saisir depuis un autre appareil » affiche une adresse et un code.
+- [ ] La page s'ouvre sur un téléphone du même réseau ; mauvais code refusé ; clé acceptée, la page se ferme.
+- [ ] Le compteur « titres reconnus » monte ; l'accueil gagne des rangées (du moment, mieux notés, genres).
+- [ ] Une œuvre présente en plusieurs versions n'apparaît qu'une fois dans ces rangées ; la fiche propose « Versions ».
+- [ ] Étiquettes langue / qualité sur les affiches des catégories du fournisseur.
+- [ ] « Accueil organisé par ArkaTV : non » rétablit les catégories du fournisseur.
+- [ ] Profil enfant : aucune rangée ne montre un titre d'une catégorie masquée.

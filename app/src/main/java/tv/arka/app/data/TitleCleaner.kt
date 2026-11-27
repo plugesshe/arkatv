@@ -6,7 +6,26 @@ package tv.arka.app.data
  * Deliberately conservative: when in doubt the name is left as it is.
  */
 object TitleCleaner {
-    class Clean(val title: String, val year: String)
+    class Clean(val title: String, val year: String, val language: String = "", val quality: String = "") {
+        /** "FR 4K", "VOSTFR", "" — only what the provider wrote, never guessed. */
+        val tags: String get() = listOf(language, quality).filter { it.isNotEmpty() }.joinToString(" ")
+    }
+
+    private val tokenSplit = Regex("[^A-Z0-9+]+")
+
+    private fun languageOf(token: String): String = when (token) {
+        "FR", "VF", "VFF", "VFQ", "TRUEFRENCH", "FRENCH" -> "FR"
+        "VOSTFR", "MULTI", "VO", "EN", "DE", "ES", "IT", "NL", "PT", "AR", "TR" -> token
+        else -> ""
+    }
+
+    private fun qualityOf(token: String): String = when {
+        token.startsWith("4K") || token == "UHD" || token == "2160P" -> "4K"
+        token == "FHD" || token == "1080P" -> "FHD"
+        token == "HD" || token == "720P" -> "HD"
+        token == "SD" -> "SD"
+        else -> ""
+    }
 
     // "FR - ", "4K-D+ - ", "4M-AMZ | ": a short upper-case code followed by a separator.
     private val prefix = Regex("^\\s*[A-Z0-9+]{2,6}(-[A-Z0-9+]{1,4})?\\s*[-|]\\s+")
@@ -20,10 +39,16 @@ object TitleCleaner {
     fun clean(raw: String): Clean {
         var text = raw.trim()
         var year = ""
+        // Everything removed as a tag is kept aside to read the language and the quality from it.
+        val removed = StringBuilder()
         for (pass in 0 until 2) {
-            val shorter = prefix.replaceFirst(text, "")
-            if (shorter.length >= 2 && shorter != text) text = shorter else break
+            val match = prefix.find(text) ?: break
+            val shorter = text.substring(match.range.last + 1)
+            if (shorter.length < 2) break
+            removed.append(' ').append(match.value)
+            text = shorter
         }
+        brackets.findAll(text).forEach { removed.append(' ').append(it.value) }
         text = brackets.replace(text, "")
         for (pass in 0 until 4) {
             val before = text
@@ -33,12 +58,20 @@ object TitleCleaner {
                 if (year.isEmpty()) year = match.groupValues[1]
                 text = text.removeRange(match.range)
             }
+            trailingQuality.find(text)?.let { removed.append(' ').append(it.value) }
             text = trailingQuality.replace(text, "")
             if (text == before) break
         }
         text = spaces.replace(text, " ").trim()
         // Never return an empty or one-letter title: the provider's name is better than nothing.
-        return if (text.length < 2) Clean(raw.trim(), year) else Clean(text, year)
+        if (text.length < 2) return Clean(raw.trim(), year)
+        var language = ""
+        var quality = ""
+        for (token in removed.toString().uppercase().split(tokenSplit)) {
+            if (language.isEmpty()) language = languageOf(token)
+            if (quality.isEmpty()) quality = qualityOf(token)
+        }
+        return Clean(text, year, language, quality)
     }
 
     fun title(raw: String): String = clean(raw).title
