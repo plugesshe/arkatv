@@ -52,16 +52,10 @@ import tv.arka.app.data.Progress
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Vod
 import tv.arka.app.data.VodDetails
+import tv.arka.app.data.toPlayItem
 import tv.arka.app.data.VodKind
 
-private fun episodeItem(vod: Vod, episode: Episode): PlayItem = PlayItem(
-    key = "e:${episode.id}",
-    title = vod.name,
-    subtitle = "S${episode.season} · É${episode.number}" + if (episode.title.isNotBlank()) " · ${episode.title}" else "",
-    url = episode.url,
-    live = false,
-    poster = episode.image.ifBlank { vod.poster },
-)
+private fun episodeItem(vod: Vod, episode: Episode): PlayItem = episode.toPlayItem(vod)
 
 private fun remainingMinutes(progress: Progress): Long = ((progress.duration - progress.position) / 60_000).coerceAtLeast(1)
 

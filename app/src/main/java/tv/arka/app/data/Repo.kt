@@ -641,6 +641,38 @@ object Repo {
         }
     }
 
+    /**
+     * The season an episode belongs to, as a play queue, with the place of that episode in it.
+     * Used when an episode is resumed on its own, so that the player still offers the other episodes.
+     * Entries saved before the series was recorded are matched by the exact name of the series.
+     */
+    suspend fun episodeQueue(item: PlayItem): Pair<List<PlayItem>, Int>? {
+        if (!item.key.startsWith("e:")) return null
+        val episodeId = item.key.removePrefix("e:")
+        return try {
+            val series = if (item.seriesId.isNotBlank()) {
+                Vod(item.seriesId, VodKind.SERIES, item.title, item.poster, "", "")
+            } else {
+                searchVods(VodKind.SERIES, TextNormalizer.normalize(item.title), 0).firstOrNull { it.name == item.title }
+            }
+            var found: Pair<List<PlayItem>, Int>? = null
+            if (series != null) {
+                for (episodes in details(series).seasons.values) {
+                    val place = episodes.indexOfFirst { it.id == episodeId }
+                    if (place >= 0) {
+                        found = episodes.map { it.toPlayItem(series) } to place
+                        break
+                    }
+                }
+            }
+            found
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     suspend fun details(vod: Vod): VodDetails {
         val key = "${vod.kind}:${vod.id}"
         detailsCache[key]?.let { return it }

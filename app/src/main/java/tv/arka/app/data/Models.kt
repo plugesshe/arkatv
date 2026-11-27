@@ -90,6 +90,18 @@ data class PlayItem(
     val live: Boolean,
     val poster: String = "",
     val epgId: String = "",
+    /** For an episode: the series it belongs to, so that the other episodes can be found again. */
+    val seriesId: String = "",
+)
+
+fun Episode.toPlayItem(series: Vod): PlayItem = PlayItem(
+    key = "e:$id",
+    title = series.name,
+    subtitle = "S$season · É$number" + if (title.isNotBlank()) " · $title" else "",
+    url = url,
+    live = false,
+    poster = image.ifBlank { series.poster },
+    seriesId = series.id,
 )
 
 data class Progress(val item: PlayItem, val position: Long, val duration: Long, val updated: Long)

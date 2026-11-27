@@ -258,6 +258,7 @@ object Store {
                 url = o.optString("url"),
                 live = false,
                 poster = o.optString("poster"),
+                seriesId = o.optString("series"),
             ),
             position = o.optLong("pos"),
             duration = o.optLong("dur"),
@@ -267,7 +268,7 @@ object Store {
 
     fun saveProgress(sourceId: String, list: List<Progress>) = writeArray(scoped("progress_$sourceId"), list) { pr ->
         JSONObject().put("key", pr.item.key).put("title", pr.item.title).put("subtitle", pr.item.subtitle)
-            .put("url", pr.item.url).put("poster", pr.item.poster).put("pos", pr.position)
+            .put("url", pr.item.url).put("poster", pr.item.poster).put("series", pr.item.seriesId).put("pos", pr.position)
             .put("dur", pr.duration).put("updated", pr.updated)
     }
 

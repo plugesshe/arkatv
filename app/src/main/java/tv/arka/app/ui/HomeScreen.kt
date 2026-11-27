@@ -279,7 +279,7 @@ private fun Hero(
         }
     }
 
-    Box(Modifier.fillMaxWidth().height(if (tv) 300.dp else 520.dp).onFocusChanged { focusInside = it.hasFocus }) {
+    Box(Modifier.fillMaxWidth().height(if (tv) 350.dp else 520.dp).onFocusChanged { focusInside = it.hasFocus }) {
         Crossfade(
             targetState = vod,
             animationSpec = tween(HERO_FADE_MS),
@@ -347,7 +347,8 @@ private fun Hero(
             )
             Text(
                 vod.name.uppercase(),
-                style = ArkaTheme.type.display,
+                // On TV the title shares a short hero with the summary and the actions.
+                style = if (tv) ArkaTheme.type.display.copy(fontSize = 34.sp, lineHeight = 36.sp) else ArkaTheme.type.display,
                 maxLines = if (tv) 2 else 3,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = ArkaSpacing.sm),

@@ -93,7 +93,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import tv.arka.app.data.Http
 import tv.arka.app.data.PlayItem
 import tv.arka.app.data.PlayerSession
@@ -173,7 +176,8 @@ private fun seekStep(repeatCount: Int): Long = when {
 @androidx.annotation.OptIn(UnstableApi::class)
 class PlayerActivity : ComponentActivity() {
     private var player: ExoPlayer? = null
-    private var queue: List<PlayItem> = emptyList()
+    private var queue by mutableStateOf<List<PlayItem>>(emptyList())
+    private val scope = MainScope()
     private var index by mutableIntStateOf(0)
     private var overlay by mutableStateOf(true)
     private var inPip by mutableStateOf(false)
@@ -249,6 +253,19 @@ class PlayerActivity : ComponentActivity() {
         })
 
         load(PlayerSession.index.coerceIn(0, queue.lastIndex))
+
+        // An episode resumed on its own: fetch the rest of its season, without touching playback,
+        // so that "Épisodes", previous / next and the automatic next episode are available.
+        val single = queue.singleOrNull()
+        if (single != null && single.key.startsWith("e:")) {
+            scope.launch {
+                val season = Repo.episodeQueue(single)
+                if (season != null && queue.size == 1 && queue[0].key == single.key && !isFinishing) {
+                    queue = season.first
+                    index = season.second
+                }
+            }
+        }
 
         val television = isTelevision()
         setContent {
@@ -389,7 +406,8 @@ class PlayerActivity : ComponentActivity() {
     /**
      * Remote control. The media keys always act. The arrows and OK belong to whatever has the focus
      * while the controls, a panel or a card are on screen; with a bare picture they are shortcuts:
-     * film or episode — left / right seek (faster while held), OK pauses, up / down show the controls;
+     * film or episode — left / right seek (faster while held), OK pauses, up shows the controls,
+     * down opens the episode selector of a series;
      * live — up / down change channel, left opens the channel list, OK and right show the controls.
      */
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -465,8 +483,15 @@ class PlayerActivity : ComponentActivity() {
             }
             KeyEvent.KEYCODE_DPAD_DOWN -> {
                 if (repeat == 0) {
-                    if (live && queue.size > 1) load(index - 1)
-                    overlay = true
+                    when {
+                        live && queue.size > 1 -> {
+                            load(index - 1)
+                            overlay = true
+                        }
+                        // Down on a series opens the episode selector directly.
+                        !live && queue.size > 1 -> panelState.intValue = PANEL_QUEUE
+                        else -> overlay = true
+                    }
                 }
                 return true
             }
@@ -500,6 +525,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        scope.cancel()
         player?.release()
         player = null
     }
