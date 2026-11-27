@@ -51,6 +51,7 @@ import tv.arka.app.data.PlayItem
 import tv.arka.app.data.Progress
 import tv.arka.app.data.Repo
 import tv.arka.app.data.Vod
+import tv.arka.app.data.TitleCleaner
 import tv.arka.app.data.VodDetails
 import tv.arka.app.data.toPlayItem
 import tv.arka.app.data.VodKind
@@ -467,7 +468,7 @@ private fun EpisodeRow(vod: Vod, episode: Episode, watched: Boolean, onClick: ()
         }
         Column(Modifier.weight(1f).padding(start = ArkaSpacing.md)) {
             Text(
-                "${episode.number}. " + episode.title.ifBlank { "Épisode ${episode.number}" },
+                "${episode.number}. " + TitleCleaner.episode(episode.title).ifBlank { "Épisode ${episode.number}" },
                 color = if (watched) ArkaColors.TextSecondary else ArkaColors.TextPrimary,
                 style = ArkaTheme.type.label,
                 fontSize = if (tv) 13.sp else 14.sp,

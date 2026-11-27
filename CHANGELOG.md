@@ -15,7 +15,14 @@
 - Films et séries lus par pages depuis la base locale au lieu d'être tous gardés en mémoire.
 - Actualisation écrite en base au fil du téléchargement : la mémoire ne dépend plus de la taille de la source.
 
+### Titres
+- Les titres sont affichés sans les marques du fournisseur (« FR - », « 4K-D+ - », année et pays entre
+  parenthèses) : affiches, mise en avant, fiches, reprises, épisodes. La recherche continue de porter
+  sur le nom d'origine.
+
 ### Android TV
+- Mise en avant de l'accueil : revenir dessus à la télécommande la réaffiche en entier, le bord gauche
+  de l'image ne se voit plus, bouton « Ma liste » avec son libellé.
 - Le tremblement de l'écran au changement de tuile est corrigé : l'agrandissement au focus ne modifie
   plus la position réelle de l'élément, donc les listes ne se recalent plus pendant l'animation.
 - Son de navigation au passage d'un élément à l'autre (suit le réglage « sons système » de l'appareil).

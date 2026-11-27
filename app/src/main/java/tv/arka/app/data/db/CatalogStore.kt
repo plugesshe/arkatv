@@ -11,6 +11,7 @@ import tv.arka.app.data.Program
 import tv.arka.app.data.Source
 import tv.arka.app.data.TextNormalizer
 import tv.arka.app.data.Vod
+import tv.arka.app.data.TitleCleaner
 import tv.arka.app.data.VodFilter
 import tv.arka.app.data.VodKind
 import tv.arka.app.data.VodSort
@@ -180,17 +181,19 @@ class CatalogStore(private val database: ArkaDatabase) {
         } else {
             ""
         }
+        // Shown without the provider's tags; the search still runs on the stored name.
+        val clean = TitleCleaner.clean(row.name)
         return Vod(
             id = if (api != null) row.streamId else url,
             kind = kind,
-            name = row.name,
+            name = clean.title,
             poster = row.poster,
             categoryId = row.categoryId,
             url = url,
             rating = row.rating,
             added = row.addedAt,
             plot = row.plot,
-            year = row.year,
+            year = row.year.ifBlank { clean.year },
         )
     }
 

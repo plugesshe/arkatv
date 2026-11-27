@@ -1,5 +1,8 @@
 package tv.arka.app.ui
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -89,10 +92,12 @@ fun HomeScreen(
     val resume = Repo.progress
     val myList = Repo.myList
 
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = ArkaSpacing.xxl)) {
+    val listState = rememberLazyListState()
+    LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = ArkaSpacing.xxl)) {
         if (heroPool.isNotEmpty()) {
             item {
                 Hero(
+                    listState = listState,
                     pool = heroPool,
                     onPlay = { vod ->
                         if (vod.kind == VodKind.MOVIE) play(context, listOf(vod.toPlayItem()), 0) else onOpen(vod)
@@ -243,6 +248,7 @@ private fun ProfileChip(onClick: () -> Unit) {
  */
 @Composable
 private fun Hero(
+    listState: LazyListState,
     pool: List<Vod>,
     onPlay: (Vod) -> Unit,
     onOpen: (Vod) -> Unit,
@@ -264,6 +270,13 @@ private fun Hero(
                 delay(HERO_INTERVAL_MS)
                 slot = (slot + 1) % pool.size
             }
+        }
+    }
+
+    // Coming back up to the hero with the remote shows all of it, not just the focused button.
+    if (tv) {
+        LaunchedEffect(focusInside) {
+            if (focusInside) listState.animateScrollToItem(0)
         }
     }
 
@@ -306,10 +319,12 @@ private fun Hero(
         if (tv) {
             Box(
                 Modifier.fillMaxSize().background(
+                    // Solid up to where the picture starts, so that its left edge never shows.
                     Brush.horizontalGradient(
                         0f to ArkaColors.Background,
-                        0.45f to ArkaColors.Background.copy(alpha = 0.7f),
-                        1f to Color.Transparent,
+                        0.42f to ArkaColors.Background,
+                        0.62f to ArkaColors.Background.copy(alpha = 0.6f),
+                        0.85f to Color.Transparent,
                     )
                 )
             )
@@ -340,7 +355,7 @@ private fun Hero(
                 .then(if (tv) Modifier.widthIn(max = 420.dp) else Modifier.fillMaxWidth()),
         ) {
             Text(
-                if (vod.kind == VodKind.SERIES) "SÉRIE" else "FILM",
+                (if (vod.kind == VodKind.SERIES) "SÉRIE" else "FILM") + if (pool.size > 1) " · À LA UNE" else "",
                 color = ArkaColors.TextSecondary,
                 style = ArkaTheme.type.label,
                 letterSpacing = 1.5.sp,
@@ -385,12 +400,20 @@ private fun Hero(
                 if (tv) {
                     SecondaryButton("Plus d'informations", { onOpen(vod) })
                 }
-                SquareButton(
-                    icon = if (inList) R.drawable.ic_arka_valide else R.drawable.ic_arka_ajouter,
-                    contentDescription = if (inList) "Dans ma liste" else "Ajouter à ma liste",
-                    onClick = { Repo.toggleMyList(vod) },
-                    active = inList,
-                )
+                if (tv) {
+                    SecondaryButton(
+                        "Ma liste",
+                        { Repo.toggleMyList(vod) },
+                        icon = if (inList) R.drawable.ic_arka_valide else R.drawable.ic_arka_ajouter,
+                    )
+                } else {
+                    SquareButton(
+                        icon = if (inList) R.drawable.ic_arka_valide else R.drawable.ic_arka_ajouter,
+                        contentDescription = if (inList) "Dans ma liste" else "Ajouter à ma liste",
+                        onClick = { Repo.toggleMyList(vod) },
+                        active = inList,
+                    )
+                }
                 if (!tv) {
                     SquareButton(R.drawable.ic_arka_info, "Plus d'informations", { onOpen(vod) })
                 }

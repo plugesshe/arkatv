@@ -96,8 +96,8 @@ data class PlayItem(
 
 fun Episode.toPlayItem(series: Vod): PlayItem = PlayItem(
     key = "e:$id",
-    title = series.name,
-    subtitle = "S$season · É$number" + if (title.isNotBlank()) " · $title" else "",
+    title = TitleCleaner.title(series.name),
+    subtitle = "S$season · É$number" + TitleCleaner.episode(title).let { if (it.isNotBlank()) " · $it" else "" },
     url = url,
     live = false,
     poster = image.ifBlank { series.poster },

@@ -164,12 +164,20 @@ object Repo {
         favoriteOrder = Store.loadFavoriteOrder(source.id)
         favorites = favoriteOrder.toSet()
         hiddenChannels = Store.loadHiddenChannels(source.id)
-        myList = Store.loadMyList(source.id)
-        progress = Store.loadProgress(source.id)
+        // Lists saved by earlier versions still carry the provider's decorated names.
+        myList = Store.loadMyList(source.id).map { it.copy(name = TitleCleaner.title(it.name)) }
+        progress = Store.loadProgress(source.id).map { entry ->
+            entry.copy(
+                item = entry.item.copy(
+                    title = TitleCleaner.title(entry.item.title),
+                    subtitle = TitleCleaner.subtitle(entry.item.subtitle),
+                )
+            )
+        }
         recentChannels = Store.loadRecentChannels(source.id)
         hiddenCategories = Store.loadHiddenCategories(source.id)
         watched = Store.loadWatched(source.id)
-        followed = Store.loadFollowed(source.id)
+        followed = Store.loadFollowed(source.id).map { it.copy(name = TitleCleaner.title(it.name)) }
         lockedCategories = Store.loadLockedCategories(source.id)
         updateLock()
     }
@@ -716,7 +724,7 @@ object Repo {
             val candidates = if (item.seriesId.isNotBlank()) {
                 listOf(Vod(item.seriesId, VodKind.SERIES, item.title, item.poster, "", ""))
             } else {
-                val wanted = TextNormalizer.normalize(item.title)
+                val wanted = TextNormalizer.normalize(TitleCleaner.title(item.title))
                 searchVods(VodKind.SERIES, wanted, 0)
                     .sortedBy { if (TextNormalizer.normalize(it.name) == wanted) 0 else 1 }
                     .take(3)
