@@ -112,7 +112,9 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import tv.arka.app.data.Recordings
+import tv.arka.app.player.DeviceVideo
 import tv.arka.app.player.TimeshiftBuffer
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import tv.arka.app.player.TimeshiftDataSource
 import java.io.File
 import kotlinx.coroutines.cancel
@@ -226,6 +228,10 @@ class PlayerActivity : ComponentActivity() {
     private var decoderRecoveries = 0
     private var softwareVideo by mutableStateOf(false)
 
+    /** Name of the video decoder in use, for the diagnostics. */
+    private var videoDecoder by mutableStateOf("")
+    private var visionNoticeShown = false
+
     /** Codec and size of the video being played, for messages ("HEVC 3840×2160"). */
     private var videoDescription = ""
 
@@ -282,6 +288,29 @@ class PlayerActivity : ComponentActivity() {
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http), extractors))
             .setLoadControl(loadControl)
             .build()
+        exo.addAnalyticsListener(object : AnalyticsListener {
+            override fun onVideoDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                videoDecoder = decoderName
+                // Dolby Vision read by an ordinary decoder: the picture plays, but single-layer
+                // Dolby Vision then has approximate colours. Better said than left as a mystery.
+                val format = exo.videoFormat
+                val vision = format?.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION
+                val dedicated = decoderName.contains("dolby", ignoreCase = true) || decoderName.contains(".dv", ignoreCase = true)
+                if (vision && !dedicated && !visionNoticeShown) {
+                    visionNoticeShown = true
+                    Toast.makeText(
+                        this@PlayerActivity,
+                        "Dolby Vision non décodable ici à cette définition : image lue sans Dolby Vision.",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                }
+            }
+        })
         exo.setAudioAttributes(
             AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
             true,
@@ -396,6 +425,7 @@ class PlayerActivity : ComponentActivity() {
                     delayed = delayed,
                     onOtherVersion = { otherVersion(automatic = false) },
                     softwareVideo = softwareVideo,
+                    videoDecoder = videoDecoder,
                     onSoftwareVideo = { toggleSoftwareVideo() },
                     onExternal = { openExternally() },
                     onBackToLive = { load(index) },
@@ -418,6 +448,7 @@ class PlayerActivity : ComponentActivity() {
         softwareVideo = false
         decoderFailures.clear()
         decoderRecoveries = 0
+        visionNoticeShown = false
         videoDescription = ""
         timeshiftFailed = false
         delayed = false
@@ -430,8 +461,36 @@ class PlayerActivity : ComponentActivity() {
         val startOver = PlayerSession.startOver
         PlayerSession.startOver = false
         val resume = if (item.live || startOver) 0L else Repo.progressFor(item.key)?.position ?: 0L
-        start(item.url, resume)
-        exo.playWhenReady = true
+        // A 4K film on a device that cannot decode 4K: start straight away on a version it can
+        // play, when the source has one, rather than failing first.
+        val heavy = !item.live && item.key.startsWith("m:") && !DeviceVideo.capabilities.uhd && Repo.tmdbMatched > 0
+        if (!heavy) {
+            start(item.url, resume)
+            exo.playWhenReady = true
+        } else {
+            val place = index
+            scope.launch {
+                val id = item.key.removePrefix("m:")
+                val versions = Repo.variants(Vod(id, VodKind.MOVIE, item.title, item.poster, "", item.url))
+                val mine = versions.firstOrNull { it.id == id }
+                val lighter = versions.firstOrNull { it.id != id && "4K" !in it.tags }
+                if (isFinishing || index != place || queue.getOrNull(place)?.key != item.key) return@launch
+                if (mine != null && "4K" in mine.tags && lighter != null) {
+                    val replacement = PlayItem("m:" + lighter.id, item.title, lighter.tags, lighter.url, live = false, poster = item.poster)
+                    triedVersions.add(item.key)
+                    queue = queue.toMutableList().also { it[place] = replacement }
+                    Toast.makeText(
+                        this@PlayerActivity,
+                        "Cet appareil ne décode pas la 4K : lecture de la version " + lighter.tags.ifBlank { "standard" } + ".",
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    start(replacement.url, Repo.progressFor(replacement.key)?.position ?: 0L)
+                } else {
+                    start(item.url, resume)
+                }
+                exo.playWhenReady = true
+            }
+        }
     }
 
     private fun start(url: String, position: Long) {
@@ -661,7 +720,8 @@ class PlayerActivity : ComponentActivity() {
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-            -> "Cet appareil ne peut pas décoder cette vidéo" + (if (videoDescription.isNotEmpty()) " ($videoDescription)." else ".")
+            -> "Cet appareil ne peut pas décoder cette vidéo" + (if (videoDescription.isNotEmpty()) " ($videoDescription)." else ".") +
+                "\nCapacités de l'appareil — " + DeviceVideo.summary
             else -> "Lecture impossible."
         }
         return message + "\n" + error.errorCodeName
@@ -965,8 +1025,16 @@ private class AdaptiveCodecSelector : MediaCodecSelector {
         requiresSecureDecoder: Boolean,
         requiresTunnelingDecoder: Boolean,
     ): List<MediaCodecInfo> {
-        val usable = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+        var usable = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
             .filter { it.name !in blocked }
+        // Dolby Vision is HEVC underneath. Once the dedicated decoders are out (absent, or ruled out
+        // because they failed at this size), the ordinary HEVC decoders get the stream: the picture
+        // plays without the Dolby Vision layer rather than not at all.
+        if (mimeType == MimeTypes.VIDEO_DOLBY_VISION) {
+            val names = usable.map { it.name }.toSet()
+            usable = usable + MediaCodecUtil.getDecoderInfos(MimeTypes.VIDEO_H265, requiresSecureDecoder, requiresTunnelingDecoder)
+                .filter { it.name !in blocked && it.name !in names }
+        }
         if (softwareVideo && MimeTypes.isVideo(mimeType)) {
             val software = usable.filter { !it.hardwareAccelerated }
             if (software.isNotEmpty()) return software
@@ -1015,6 +1083,7 @@ private fun PlayerScreen(
     delayed: Boolean,
     onOtherVersion: () -> Unit,
     softwareVideo: Boolean,
+    videoDecoder: String,
     onSoftwareVideo: () -> Unit,
     onExternal: () -> Unit,
     onBackToLive: () -> Unit,
@@ -1539,7 +1608,7 @@ private fun PlayerScreen(
                     .clip(RoundedCornerShape(ArkaRadius.md)).background(Color.Black.copy(alpha = 0.75f)).padding(ArkaSpacing.md),
             ) {
                 Text("Diagnostics", color = Color.White, style = ArkaTheme.type.label, modifier = Modifier.padding(bottom = 4.dp))
-                stats.forEach { (label, value) ->
+                (stats + listOf("Décodeur" to videoDecoder.ifEmpty { "—" }, "Appareil" to DeviceVideo.summary)).forEach { (label, value) ->
                     Row {
                         Text(label, color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, modifier = Modifier.width(110.dp))
                         Text(value, color = Color.White, style = ArkaTheme.type.mono)

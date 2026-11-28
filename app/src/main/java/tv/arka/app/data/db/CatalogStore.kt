@@ -328,6 +328,10 @@ class CatalogStore(private val database: ArkaDatabase) {
     @Volatile
     var locked: Map<String, Set<String>> = emptyMap()
 
+    /** True on a device that cannot decode 4K: merged works are then represented by a lighter version. */
+    @Volatile
+    var avoidUhd = false
+
     /** Language and quality as the provider writes them in its titles; [column] is the name column. */
     private fun versionFilter(sql: StringBuilder, args: MutableList<Any>, filter: VodFilter, column: String) {
         val language = when (filter.language) {
@@ -504,7 +508,8 @@ class CatalogStore(private val database: ArkaDatabase) {
      * most popular first or best rated first, optionally of one TMDB genre.
      */
     suspend fun smartRow(source: Source, kind: VodKind, genreId: Int?, byRating: Boolean, limit: Int): List<Vod> {
-        val sql = StringBuilder(SMART_BEST).append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
+        val sql = StringBuilder(if (avoidUhd) SMART_BEST_LIGHT else SMART_BEST)
+            .append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
         val args = ArrayList<Any>()
         args.add(source.id)
         args.add(kindName(kind))
@@ -536,7 +541,8 @@ class CatalogStore(private val database: ArkaDatabase) {
         filter: VodFilter = VodFilter.NONE,
     ): List<Vod> {
         // Sorting by date added already uses an aggregate, so the version shown is then unspecified.
-        val sql = StringBuilder(if (sort == VodSort.RECENT) SMART_FROM else SMART_BEST)
+        val best = if (avoidUhd) SMART_BEST_LIGHT else SMART_BEST
+        val sql = StringBuilder(if (sort == VodSort.RECENT) SMART_FROM else best)
             .append(" WHERE t.sourceId = ? AND t.kind = ? AND t.tmdbId > 0")
         val args = ArrayList<Any>()
         args.add(source.id)
@@ -683,6 +689,16 @@ class CatalogStore(private val database: ArkaDatabase) {
             " WHEN v.name LIKE '%FHD%' OR v.name LIKE '%1080%' THEN 30" +
             " WHEN v.name LIKE 'SD %' OR v.name LIKE '% SD' OR v.name LIKE '% SD %' THEN 10 ELSE 20 END)"
         const val SMART_BEST = "SELECT t.*, MAX($VERSION_SCORE) AS best$SMART_JOIN"
+
+        // The same choice for a device that cannot decode 4K: French first, and 4K only when
+        // nothing else exists.
+        private const val VERSION_SCORE_LIGHT = "(CASE WHEN v.name LIKE 'FR %' OR v.name LIKE 'FR-%' OR v.name LIKE '%VF%'" +
+            " OR v.name LIKE '%FRENCH%' THEN 300 WHEN v.name LIKE '%MULTI%' THEN 200" +
+            " WHEN v.name LIKE '%VOSTFR%' THEN 100 ELSE 150 END" +
+            " + CASE WHEN v.name LIKE '%4K%' OR v.name LIKE '%UHD%' THEN -1000" +
+            " WHEN v.name LIKE '%FHD%' OR v.name LIKE '%1080%' THEN 30" +
+            " WHEN v.name LIKE 'SD %' OR v.name LIKE '% SD' OR v.name LIKE '% SD %' THEN 10 ELSE 20 END)"
+        const val SMART_BEST_LIGHT = "SELECT t.*, MAX($VERSION_SCORE_LIGHT) AS best$SMART_JOIN"
         const val UNMATCHED_FROM = "SELECT COUNT(*) FROM vods v LEFT JOIN tmdb t ON t.sourceId = v.sourceId" +
             " AND t.kind = v.kind AND t.streamId = v.streamId"
         const val UNMATCHED_WHERE = " WHERE v.sourceId = ? AND v.kind = ? AND (t.streamId IS NULL OR t.tmdbId = 0)"

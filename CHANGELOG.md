@@ -102,6 +102,12 @@
 - Affiches gardées sur disque, sans fondu sur TV.
 
 ### Lecteur
+- Le lecteur connaît les capacités réelles de l'appareil (4K, 10 bits, Dolby Vision) : sur un appareil qui
+  ne décode pas la 4K, un film démarre directement sur une version qu'il sait lire, et les tuiles
+  fusionnées pointent vers cette version.
+- Dolby Vision : quand le décodeur dédié est absent ou échoue à cette définition, l'image est lue par le
+  décodeur HEVC ordinaire, sans la couche Dolby Vision, au lieu d'une erreur ; un message le signale.
+- Diagnostics et messages d'erreur : décodeur utilisé et capacités de l'appareil.
 - Reprise automatique sur erreur de décodage : la lecture repart du même endroit, puis change de décodeur
   si le même échoue encore (autre décodeur matériel, logiciel, ou décodeurs audio embarqués), sans message.
 - Décodeurs audio logiciels embarqués (AC-3, E-AC-3, DTS, TrueHD…) pour les appareils qui n'en ont pas.

@@ -499,6 +499,7 @@ object Repo {
         if (initialised) return
         initialised = true
         store = CatalogStore(ArkaDatabase.create(context.applicationContext))
+        store?.avoidUhd = !tv.arka.app.player.DeviceVideo.capabilities.uhd
         sources = Store.loadSources()
         profiles = Store.loadProfiles()
         activeProfile = profiles.firstOrNull { it.id == Store.activeProfileId } ?: profiles.first()
