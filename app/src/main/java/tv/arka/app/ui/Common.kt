@@ -10,6 +10,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import coil.Coil
 import tv.arka.app.data.Downloads
+import tv.arka.app.data.Repo
 import coil.ImageLoader
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
