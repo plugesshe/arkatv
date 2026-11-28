@@ -367,6 +367,7 @@ fun ProfileScreen(
 
         if (section == SECTION_SETTINGS) {
         UpdateSettings()
+        DeviceSettings()
         TmdbSettings()
         ConnectSettings()
         ParentalSettings(onParental)

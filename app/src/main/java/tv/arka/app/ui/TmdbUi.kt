@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import tv.arka.app.data.ArkaConnect
+import tv.arka.app.player.DeviceVideo
 import tv.arka.app.data.PairingServer
 import tv.arka.app.data.Store
 import tv.arka.app.data.Repo
@@ -162,6 +163,55 @@ fun ConnectSettings() {
                 "La télécommande n'a pas pu démarrer : vérifiez que cet appareil est connecté à votre réseau local.",
                 color = ArkaColors.TextSecondary,
                 style = ArkaTheme.type.label,
+            )
+        }
+    }
+}
+
+/** "Cet appareil" block of the settings: what it decodes, and whether what it cannot play is hidden. */
+@Composable
+fun DeviceSettings() {
+    val capabilities = remember { DeviceVideo.capabilities }
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = ArkaTheme.margin).padding(bottom = ArkaSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(ArkaSpacing.sm),
+    ) {
+        Text("Cet appareil", style = ArkaTheme.type.heading, fontWeight = FontWeight(700))
+        Text(
+            "ArkaTV demande à l'appareil ce qu'il sait décoder et ne montre que ce qu'il peut lire. " +
+                "Un titre proposé en plusieurs versions pointe vers la meilleure version lisible ici.",
+            color = ArkaColors.TextSecondary,
+            style = ArkaTheme.type.label,
+            fontWeight = FontWeight(400),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
+            ArkaChip(
+                if (Repo.hideIncompatible) "Masquer les contenus incompatibles : oui" else "Masquer les contenus incompatibles : non",
+                Repo.hideIncompatible,
+            ) { Repo.updateHideIncompatible(!Repo.hideIncompatible) }
+            if (Repo.unplayable.isNotEmpty()) {
+                ArkaChip("Réafficher les ${Repo.unplayable.size} titres en échec", false) { Repo.clearUnplayable() }
+            }
+        }
+        if (!capabilities.known) {
+            Text("L'appareil n'a pas répondu : rien n'est masqué, le lecteur s'adapte à la lecture.", style = ArkaTheme.type.body)
+        } else {
+            Text("Image (décodeurs matériels)", color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, fontWeight = FontWeight(500))
+            capabilities.video.forEach { Text(it, style = ArkaTheme.type.mono) }
+            Text(
+                "Écran : " + if (capabilities.hdr.isEmpty()) "SDR (pas de HDR)" else capabilities.hdr.joinToString(", "),
+                style = ArkaTheme.type.mono,
+            )
+            Text("Son décodé par l'appareil", color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, fontWeight = FontWeight(500))
+            Text(
+                if (capabilities.audio.isEmpty()) "Aucun format Dolby ou DTS" else capabilities.audio.joinToString(" · "),
+                style = ArkaTheme.type.mono,
+            )
+            Text(
+                "Les autres formats audio (TrueHD, DTS…) sont décodés par ArkaTV.",
+                color = ArkaColors.TextSecondary,
+                style = ArkaTheme.type.label,
+                fontWeight = FontWeight(400),
             )
         }
     }

@@ -219,6 +219,53 @@ class CatalogStoreTest {
     }
 
     @Test
+    fun aLimitedDeviceOnlySeesWhatItCanPlay() = runBlocking {
+        val mixed = Catalog(
+            vodCategories = listOf(Category("uhd", "Films 4K"), Category("all", "Films")),
+            movies = listOf(
+                movie("1", "4K-D+ - Dune (2021)", "uhd"),
+                movie("2", "FR - Dune (2021) FHD", "all"),
+                movie("3", "4K - Oppenheimer (2023) DV", "uhd"),
+                movie("4", "Arrival", "all"),
+                movie("5", "FR - Tenet (2020)", "all"),
+            ),
+        )
+        store.save(xtream, mixed)
+        val dune = Tmdb.Match(9, "Dune", "2021", listOf(878), 80.0, 7.8, 9000, "", "", "")
+        val oppenheimer = Tmdb.Match(10, "Oppenheimer", "2023", listOf(18), 95.0, 8.1, 9000, "", "", "")
+        store.saveTmdb(xtream, VodKind.MOVIE, "1", dune, 1)
+        store.saveTmdb(xtream, VodKind.MOVIE, "2", dune, 1)
+        store.saveTmdb(xtream, VodKind.MOVIE, "3", oppenheimer, 1)
+
+        suspend fun provider() = store.vodPage(xtream, VodKind.MOVIE, null, VodSort.PROVIDER, null, 10, 0).map { it.id }
+        suspend fun merged() = store.smartPage(xtream, VodKind.MOVIE, null, VodSort.POPULAR, null, 10, 0).map { it.id }
+
+        // A device that decodes everything keeps the whole catalogue, 4K first for a merged work.
+        assertEquals(listOf("1", "2", "3", "4", "5"), provider())
+        assertEquals(listOf("3", "2"), merged())
+
+        // A device limited to Full HD: 4K entries go, the Full HD version stands for the work, and a
+        // work that only exists in 4K disappears, as does the category left empty.
+        store.hiddenPatterns = listOf("%4K%", "%UHD%", "%2160%")
+        assertEquals(listOf("2", "4", "5"), provider())
+        assertEquals(listOf("2"), merged())
+        assertEquals(listOf("2"), store.variants(xtream, VodKind.MOVIE, "2").map { it.id })
+        val summary = store.loadSummary(xtream, "ts", 10)!!
+        assertEquals(3, summary.movieCount)
+        assertEquals(listOf("all"), summary.vodCategories.map { it.id })
+        assertEquals(1, store.smartCounts(xtream, VodKind.MOVIE, listOf(878, 18)).total)
+
+        // A title that failed to decode on this device leaves its lists too.
+        store.hiddenIds = mapOf("movie" to setOf("5"))
+        assertEquals(listOf("2", "4"), provider())
+        assertEquals(2, store.loadSummary(xtream, "ts", 10)!!.movieCount)
+
+        store.hiddenPatterns = emptyList()
+        store.hiddenIds = emptyMap()
+        assertEquals(5, provider().size)
+    }
+
+    @Test
     fun arkaOrganisationMergesVersionsAndKeepsUnmatchedTitles() = runBlocking {
         store.save(xtream, catalog)
         fun match(id: Int, title: String, popularity: Double, genres: List<Int>) =

@@ -46,6 +46,20 @@
 - Mon espace › Téléchargements : progression, lecture hors connexion, suppression, espace libre.
 - Un titre téléchargé est lu depuis l'appareil, sans réseau.
 
+### Seulement ce que l'appareil sait lire
+- Au lancement, ArkaTV demande à l'appareil ce qu'il décode en matériel (H.264, HEVC, VP9, AV1, Dolby
+  Vision, tailles maximales, 10 bits), le HDR de son écran et ses décodeurs audio. Aucune liste de modèles.
+- Sur un appareil qui ne décode pas la 4K, les titres et chaînes 4K sont retirés des films, séries,
+  chaînes, de la recherche, de la découverte, des rangées de l'accueil et des compteurs ; les catégories
+  devenues vides disparaissent. Un appareil qui décode la 4K garde tout le catalogue.
+- Une œuvre proposée en plusieurs versions reste affichée une fois et pointe vers la meilleure version
+  lisible ; une œuvre qui n'existe qu'en 4K n'apparaît plus sur un appareil limité.
+- Un titre que le lecteur n'a pas pu décoder est retenu et retiré des listes de cet appareil.
+- Paramètres › Cet appareil : capacités détectées, réglage « Masquer les contenus incompatibles »
+  (activé par défaut ; désactivé, les titres restent visibles, grisés, avec la mention « 4K non prise en
+  charge »), et remise à zéro des titres en échec.
+- Flux adaptatifs : jamais de variante plus grande que ce que l'appareil décode.
+
 ### Catalogue enrichi (TMDB)
 - Analyse TMDB environ dix fois plus rapide (plusieurs titres à la fois) et qui ne s'arrête plus sur une
   erreur réseau passagère ni sur un titre que TMDB refuse.

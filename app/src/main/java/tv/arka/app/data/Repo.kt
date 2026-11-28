@@ -125,6 +125,83 @@ object Repo {
         )
     }
 
+    // ----- Only what this device can play.
+
+    /** What the device decodes; set once at start-up from what the system reports. */
+    var device: DeviceProfile = DeviceProfile.UNKNOWN
+    var hideIncompatible by mutableStateOf(true)
+
+    /** Titles whose playback failed on this device because of a decoder ("m:<id>", "c:<id>"). */
+    var unplayable by mutableStateOf(setOf<String>())
+
+    private fun updateVisibility() {
+        val catalogStore = store ?: return
+        if (hideIncompatible) {
+            catalogStore.hiddenPatterns = Playability.hiddenNamePatterns(device)
+            catalogStore.hiddenIds = mapOf(CatalogStore.MOVIE to unplayable.filter { it.startsWith("m:") }.map { it.removePrefix("m:") }.toSet())
+        } else {
+            catalogStore.hiddenPatterns = emptyList()
+            catalogStore.hiddenIds = emptyMap()
+        }
+    }
+
+    /** Reads the catalogue again from the device after a change of what is shown. Nothing is downloaded. */
+    private fun refreshFromStore() {
+        val source = active ?: return
+        val catalogStore = store ?: return
+        scope.launch {
+            try {
+                val summary = withContext(Dispatchers.IO) { catalogStore.loadSummary(source, Store.liveFormat, ROW_SIZE) }
+                if (active?.id == source.id && summary != null) {
+                    apply(summary)
+                    catalogVersion++
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The lists keep what they had.
+            }
+        }
+    }
+
+    fun updateHideIncompatible(enabled: Boolean) {
+        Store.hideIncompatible = enabled
+        hideIncompatible = enabled
+        updateVisibility()
+        refreshFromStore()
+    }
+
+    /** Called by the player when a title could not be decoded: it leaves the lists of this device. */
+    fun markUnplayable(key: String) {
+        val source = active ?: return
+        if (key in unplayable || !(key.startsWith("m:") || key.startsWith("c:"))) return
+        unplayable = unplayable + key
+        Store.saveUnplayable(source.id, unplayable)
+        updateVisibility()
+        if (hideIncompatible) refreshFromStore()
+    }
+
+    fun clearUnplayable() {
+        val source = active ?: return
+        unplayable = emptySet()
+        Store.saveUnplayable(source.id, unplayable)
+        updateVisibility()
+        refreshFromStore()
+    }
+
+    private fun hiddenChannel(channel: Channel): Boolean =
+        hideIncompatible && (("c:" + channel.id) in unplayable || Playability.isHiddenName(channel.name, device))
+
+    /** False for a saved title (list, history) this device is known not to play. */
+    fun playableHere(key: String, name: String): Boolean =
+        !hideIncompatible || !(key in unplayable || Playability.isHiddenName(name, device))
+
+    /** True for a title this device cannot decode, whatever the filter says: used to grey it out. */
+    fun tooHeavy(tags: String): Boolean = Playability.isHiddenName(tags, device)
+
+    fun visibleMyList(): List<Vod> = myList.filter { playableHere("m:" + it.id, it.name + " " + it.tags) }
+    fun visibleProgress(): List<Progress> = progress.filter { it.item.key !in unplayable || !hideIncompatible }
+
     /** Channel groups made by the user for the active profile and source. */
     var channelGroups by mutableStateOf(listOf<ChannelGroup>())
 
@@ -495,11 +572,14 @@ object Repo {
 
     fun init(context: Context) {
         tmdbToken = Store.tmdbToken
+        hideIncompatible = Store.hideIncompatible
+        device = tv.arka.app.player.DeviceVideo.profile
         smartHome = Store.smartHome
         if (initialised) return
         initialised = true
         store = CatalogStore(ArkaDatabase.create(context.applicationContext))
         store?.avoidUhd = !tv.arka.app.player.DeviceVideo.capabilities.uhd
+        updateVisibility()
         sources = Store.loadSources()
         profiles = Store.loadProfiles()
         activeProfile = profiles.firstOrNull { it.id == Store.activeProfileId } ?: profiles.first()
@@ -538,7 +618,9 @@ object Repo {
         watched = Store.loadWatched(source.id)
         followed = Store.loadFollowed(source.id).map { it.copy(name = TitleCleaner.title(it.name)) }
         lockedCategories = Store.loadLockedCategories(source.id)
+        unplayable = Store.loadUnplayable(source.id)
         updateLock()
+        updateVisibility()
     }
 
     fun switchProfile(profile: Profile) {
@@ -628,8 +710,11 @@ object Repo {
         rawSummary = summary
         val hidden = hiddenNow()
         fun gone(kind: String, id: String) = hidden.isNotEmpty() && "$kind:$id" in hidden
-        liveCategories = summary?.liveCategories.orEmpty().filter { !gone(CatalogStore.LIVE, it.id) }
-        channels = summary?.channels.orEmpty().filter { !gone(CatalogStore.LIVE, it.categoryId) }
+        channels = summary?.channels.orEmpty().filter { !gone(CatalogStore.LIVE, it.categoryId) && !hiddenChannel(it) }
+        // A live category left without any channel this device can show is not listed.
+        val usedLive = if (hideIncompatible) channels.mapTo(HashSet()) { it.categoryId } else null
+        liveCategories = summary?.liveCategories.orEmpty()
+            .filter { !gone(CatalogStore.LIVE, it.id) && (usedLive == null || it.id in usedLive) }
         vodCategories = summary?.vodCategories.orEmpty().filter { !gone(CatalogStore.MOVIE, it.id) }
         seriesCategories = summary?.seriesCategories.orEmpty().filter { !gone(CatalogStore.SERIES, it.id) }
         val movieCounts = summary?.movieCategoryCounts.orEmpty().filterKeys { !gone(CatalogStore.MOVIE, it) }

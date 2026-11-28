@@ -127,6 +127,9 @@ interface CatalogDao {
     @RawQuery
     suspend fun queryTmdb(query: SupportSQLiteQuery): List<TmdbRow>
 
+    @RawQuery
+    suspend fun queryCategoryCounts(query: SupportSQLiteQuery): List<CategoryCount>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTmdb(rows: List<TmdbRow>)
 

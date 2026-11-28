@@ -244,8 +244,10 @@ class CatalogStore(private val database: ArkaDatabase) {
         if (channelRows.isEmpty() && movieCount == 0 && seriesCount == 0) return null
         val categories = dao.categories(source.id).groupBy { it.kind }
         val api = apiOf(source)
-        val movieCounts = dao.categoryCounts(source.id, MOVIE).associate { it.categoryId to it.total }
-        val seriesCounts = dao.categoryCounts(source.id, SERIES).associate { it.categoryId to it.total }
+        // Counted without what is hidden on this device, so that numbers and empty categories agree
+        // with what the lists show.
+        val movieCounts = visibleCounts(source.id, MOVIE)
+        val seriesCounts = visibleCounts(source.id, SERIES)
         fun cats(kind: String, used: Set<String>?): List<Category> = categories[kind].orEmpty()
             .filter { used == null || it.categoryId in used }
             .map { Category(it.categoryId, it.name) }
@@ -254,8 +256,8 @@ class CatalogStore(private val database: ArkaDatabase) {
             channels = channelRows.map { channelOf(it, api, liveFormat) },
             vodCategories = cats(MOVIE, movieCounts.keys),
             seriesCategories = cats(SERIES, seriesCounts.keys),
-            movieCount = movieCount,
-            seriesCount = seriesCount,
+            movieCount = movieCounts.values.sum(),
+            seriesCount = seriesCounts.values.sum(),
             movieCategoryCounts = movieCounts,
             seriesCategoryCounts = seriesCounts,
             latestMovies = vodPage(source, VodKind.MOVIE, null, VodSort.RECENT, null, rowSize, 0),
@@ -355,11 +357,44 @@ class CatalogStore(private val database: ArkaDatabase) {
         }
     }
 
-    private fun lockFilter(sql: StringBuilder, args: MutableList<Any>, kind: String) {
+    /** Title patterns (SQL LIKE) left out of every query: what this device cannot decode. */
+    @Volatile
+    var hiddenPatterns: List<String> = emptyList()
+
+    /** Stream ids left out of every query, by kind: titles whose playback failed on this device. */
+    @Volatile
+    var hiddenIds: Map<String, Set<String>> = emptyMap()
+
+    /**
+     * Everything that must never reach the screen, in one place: the categories locked for a child
+     * profile, the titles this device cannot decode and the ones that already failed on it.
+     * [prefix] qualifies the columns when the query joins tables ("v.").
+     */
+    private fun lockFilter(sql: StringBuilder, args: MutableList<Any>, kind: String, prefix: String = "") {
         val hidden = locked[kind].orEmpty().take(MAX_LOCKED)
-        if (hidden.isEmpty()) return
-        sql.append(" AND categoryId NOT IN (").append(hidden.joinToString(",") { "?" }).append(")")
-        args.addAll(hidden)
+        if (hidden.isNotEmpty()) {
+            sql.append(" AND ").append(prefix).append("categoryId NOT IN (").append(hidden.joinToString(",") { "?" }).append(")")
+            args.addAll(hidden)
+        }
+        for (pattern in hiddenPatterns) {
+            sql.append(" AND ").append(prefix).append("name NOT LIKE ?")
+            args.add(pattern)
+        }
+        val ids = hiddenIds[kind].orEmpty().take(MAX_LOCKED)
+        if (ids.isNotEmpty()) {
+            sql.append(" AND ").append(prefix).append("streamId NOT IN (").append(ids.joinToString(",") { "?" }).append(")")
+            args.addAll(ids)
+        }
+    }
+
+    private suspend fun visibleCounts(sourceId: String, kind: String): Map<String, Int> {
+        val sql = StringBuilder("SELECT categoryId, COUNT(*) AS total FROM vods WHERE sourceId = ? AND kind = ?")
+        val args = ArrayList<Any>()
+        args.add(sourceId)
+        args.add(kind)
+        lockFilter(sql, args, kind)
+        sql.append(" GROUP BY categoryId")
+        return dao.queryCategoryCounts(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).associate { it.categoryId to it.total }
     }
 
     private fun categoryFilter(sql: StringBuilder, args: MutableList<Any>, categories: Collection<String>) {
@@ -518,7 +553,7 @@ class CatalogStore(private val database: ArkaDatabase) {
             args.add("%,$genreId,%")
         }
         if (byRating) sql.append(" AND t.votes >= 300")
-        lockFilter(sql, args, kindName(kind))
+        lockFilter(sql, args, kindName(kind), "v.")
         sql.append(" GROUP BY t.tmdbId ORDER BY ").append(if (byRating) "t.rating DESC" else "t.popularity DESC")
             .append(" LIMIT ?")
         args.add(limit)
@@ -568,7 +603,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         }
         // A rating only means something with enough votes behind it.
         if (sort == VodSort.RATING) sql.append(" AND t.votes >= 50")
-        lockFilter(sql, args, kindName(kind))
+        lockFilter(sql, args, kindName(kind), "v.")
         val direction = if (descending ?: (sort != VodSort.NAME)) "DESC" else "ASC"
         val order = when (sort) {
             VodSort.NAME -> "t.title COLLATE NOCASE $direction"
@@ -589,7 +624,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         val args = ArrayList<Any>()
         args.add(source.id)
         args.add(kindName(kind))
-        lockFilter(sql, args, kindName(kind))
+        lockFilter(sql, args, kindName(kind), "v.")
         sql.append(" ORDER BY v.addedAt DESC, v.pos LIMIT ? OFFSET ?")
         args.add(limit)
         args.add(offset)
@@ -611,14 +646,14 @@ class CatalogStore(private val database: ArkaDatabase) {
                 sql.append(" AND t.genres LIKE ?")
                 args.add("%,$genreId,%")
             }
-            lockFilter(sql, args, kindName(kind))
+            lockFilter(sql, args, kindName(kind), "v.")
             return dao.queryInt(SimpleSQLiteQuery(sql.toString(), args.toTypedArray()))
         }
         val unmatchedSql = StringBuilder(UNMATCHED_FROM).append(UNMATCHED_WHERE)
         val unmatchedArgs = ArrayList<Any>()
         unmatchedArgs.add(source.id)
         unmatchedArgs.add(kindName(kind))
-        lockFilter(unmatchedSql, unmatchedArgs, kindName(kind))
+        lockFilter(unmatchedSql, unmatchedArgs, kindName(kind), "v.")
         val unmatched = dao.queryInt(SimpleSQLiteQuery(unmatchedSql.toString(), unmatchedArgs.toTypedArray()))
         return SmartCounts(count(null), unmatched, genres.associateWith { count(it) })
     }
@@ -663,7 +698,7 @@ class CatalogStore(private val database: ArkaDatabase) {
         args.add(source.id)
         args.add(kindName(kind))
         args.add(tmdbId)
-        lockFilter(sql, args, kindName(kind))
+        lockFilter(sql, args, kindName(kind), "v.")
         sql.append(" ORDER BY v.pos LIMIT 12")
         val api = apiOf(source)
         return dao.queryVods(SimpleSQLiteQuery(sql.toString(), args.toTypedArray())).map { vodOf(it, kind, api) }

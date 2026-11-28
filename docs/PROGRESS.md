@@ -233,3 +233,27 @@ rapprochement TMDB. Le reste n'a pas encore de retour d'appareil.
 | Clé de signature de production | Demande un secret dans le dépôt GitHub (action du propriétaire) et une désinstallation unique sur chaque appareil |
 | Textes en ressources FR / EN | Environ six cents chaînes à extraire et traduire : lot à part entière |
 | Mesures de performance | Impossible sans appareil instrumenté |
+
+## Lot « seulement ce que l'appareil sait lire » (28/11/2026)
+
+Demande du propriétaire, avec les mesures de sa Lenovo TB-J606F (décodeurs matériels limités à 1920×1088,
+pas de Dolby Vision, écran SDR, décodeurs Dolby audio présents).
+
+| Point de la demande | État |
+|---|---|
+| Détection des capacités au lancement, affichée dans les paramètres | fait |
+| Exigences d'un contenu d'après son nom | fait |
+| Exigences d'après les métadonnées du fournisseur ou l'analyse du flux | non fait |
+| Filtrage : films, séries, chaînes, recherche, découverte, accueil, compteurs, catégories vides | fait |
+| Filtrage de « Ma liste » et de « Reprendre » | fait pour les titres connus comme illisibles ou marqués 4K |
+| Filtrage épisode par épisode, saisons vides | non fait (une série marquée 4K est masquée en entier) |
+| Doublons de qualité : une tuile, meilleure version lisible | fait pour les titres reconnus par TMDB |
+| Chaînes en double (4K / FHD / HD) regroupées | non fait (les chaînes 4K sont masquées, les autres restent) |
+| Titre en échec de décodage : marqué, masqué, autre version proposée | fait |
+| Réglage « Masquer les contenus incompatibles », mode grisé | fait |
+| Sélection limitée aux variantes décodables (flux adaptatifs) | fait |
+| Dolby Vision profil 8 par le décodeur HEVC | fait (build 1038) |
+| Conversion HDR vers SDR | non fait |
+| Audio multicanal transmis tel quel, décodeurs Dolby de l'appareil d'abord, FFmpeg pour TrueHD / DTS | fait |
+| Badge Atmos seulement pour une piste réellement Atmos | fait dans le lecteur |
+| Tests : classification par nom, règles de lecture, filtrage et dédoublonnage | faits ; pas de test sur playlist HLS (non analysée) |

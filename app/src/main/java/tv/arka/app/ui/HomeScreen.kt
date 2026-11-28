@@ -92,8 +92,8 @@ fun HomeScreen(
         }
         (mixed.filter { it.poster.isNotBlank() } + mixed.filter { it.poster.isBlank() }).take(HERO_SLOTS)
     }
-    val resume = Repo.progress
-    val myList = Repo.myList
+    val resume = Repo.visibleProgress()
+    val myList = Repo.visibleMyList()
 
     val listState = rememberLazyListState()
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = ArkaSpacing.xxl)) {

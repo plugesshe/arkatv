@@ -244,6 +244,11 @@ fun Poster(vod: Vod, modifier: Modifier = Modifier, highlight: String = "", onCl
             if (vod.tags.isNotBlank()) {
                 ArkaBadge(vod.tags, Modifier.align(Alignment.TopStart).padding(6.dp))
             }
+            // Shown although this device cannot decode it (the user turned the filter off).
+            if (!Repo.hideIncompatible && Repo.tooHeavy(vod.tags)) {
+                Box(Modifier.fillMaxSize().background(ArkaColors.Background.copy(alpha = 0.6f)))
+                ArkaBadge("4K non prise en charge", Modifier.align(Alignment.BottomStart).padding(6.dp))
+            }
         }
         Text(
             highlighted(vod.name, highlight),

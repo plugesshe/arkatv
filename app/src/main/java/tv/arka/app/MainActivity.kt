@@ -71,6 +71,7 @@ import tv.arka.app.ui.ProfileScreen
 import tv.arka.app.ui.ProfilesScreen
 import tv.arka.app.ui.SearchScreen
 import tv.arka.app.data.ArkaConnect
+import tv.arka.app.player.DeviceVideo
 import tv.arka.app.data.Downloads
 import tv.arka.app.data.Recordings
 import tv.arka.app.ui.ParentalScreen
@@ -91,6 +92,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
+        DeviceVideo.init(applicationContext)
         Repo.init(applicationContext)
         installImageLoader(applicationContext)
         Downloads.init()

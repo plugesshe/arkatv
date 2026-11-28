@@ -250,6 +250,7 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(applicationContext)
+        DeviceVideo.init(applicationContext)
         queue = PlayerSession.queue
         if (queue.isEmpty()) {
             finish()
@@ -288,6 +289,14 @@ class PlayerActivity : ComponentActivity() {
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http), extractors))
             .setLoadControl(loadControl)
             .build()
+        // Adaptive streams: never pick a variant larger than what the device decodes or the screen shows.
+        val limits = DeviceVideo.capabilities
+        if (limits.known && limits.maxWidth > 0) {
+            exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                .setMaxVideoSize(limits.maxWidth, limits.maxHeight)
+                .setViewportSizeToPhysicalDisplaySize(this, true)
+                .build()
+        }
         exo.addAnalyticsListener(object : AnalyticsListener {
             override fun onVideoDecoderInitialized(
                 eventTime: AnalyticsListener.EventTime,
@@ -344,6 +353,10 @@ class PlayerActivity : ComponentActivity() {
                     // A film this device cannot decode at all: another version of it may be readable.
                     isDecodingError(error) && otherVersion(automatic = true) -> {}
                     else -> {
+                        // Refused by every decoder: this title leaves the lists of this device.
+                        if (isDecodingError(error) && error.errorCode != PlaybackException.ERROR_CODE_DECODING_FAILED) {
+                            Repo.markUnplayable(item.key)
+                        }
                         errorText = describe(error)
                         overlay = true
                     }
@@ -355,6 +368,7 @@ class PlayerActivity : ComponentActivity() {
                 videoDescription = video.firstOrNull()?.takeIf { it.length > 0 }?.getTrackFormat(0)?.let { describeVideo(it) }.orEmpty()
                 // Sound without picture: the video exists but nothing here can decode it.
                 if (video.isNotEmpty() && video.none { it.isSupported } && queue.getOrNull(index)?.live == false) {
+                    queue.getOrNull(index)?.let { Repo.markUnplayable(it.key) }
                     if (!otherVersion(automatic = true)) {
                         exo.playWhenReady = false
                         errorText = "Cet appareil ne peut pas décoder l'image de cette vidéo" +
@@ -619,6 +633,8 @@ class PlayerActivity : ComponentActivity() {
         if (item.live || !item.key.startsWith("m:") || switchingVersion) return switchingVersion
         if (Repo.tmdbToken.isBlank() || Repo.tmdbMatched == 0) return false
         val position = player?.currentPosition ?: 0
+        // A version the device could not decode is not offered again on it.
+        if (automatic) Repo.markUnplayable(item.key)
         triedVersions.add(item.key)
         switchingVersion = true
         player?.playWhenReady = false
@@ -2026,6 +2042,7 @@ private fun playingFormats(player: ExoPlayer): String {
     if (audio != null) {
         when (audio.sampleMimeType) {
             MimeTypes.AUDIO_E_AC3_JOC -> parts.add("Dolby Atmos")
+            MimeTypes.AUDIO_AC4 -> parts.add("Dolby AC-4")
             MimeTypes.AUDIO_TRUEHD -> parts.add("Dolby TrueHD")
             MimeTypes.AUDIO_E_AC3 -> parts.add("Dolby Digital+")
             MimeTypes.AUDIO_AC3 -> parts.add("Dolby Digital")

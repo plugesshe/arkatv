@@ -127,6 +127,15 @@ object Store {
         get() = p().getString("active", null)
         set(value) = p().edit().putString("active", value).apply()
 
+    /** Hide what this device cannot decode (on by default); off shows it greyed out instead. */
+    var hideIncompatible: Boolean
+        get() = p().getBoolean("hide_incompatible", true)
+        set(value) = p().edit().putBoolean("hide_incompatible", value).apply()
+
+    /** Keys ("m:<id>", "c:<id>") of titles whose playback failed on this device because of a decoder. */
+    fun loadUnplayable(sourceId: String): Set<String> = loadStrings("unplayable_$sourceId").toSet()
+    fun saveUnplayable(sourceId: String, keys: Set<String>) = saveStrings("unplayable_$sourceId", keys)
+
     /** ArkaTV Connect: the remote-control page for a phone, on the local network. Off by default. */
     var connectEnabled: Boolean
         get() = p().getBoolean("connect", false)
