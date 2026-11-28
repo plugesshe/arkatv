@@ -340,6 +340,8 @@ class CatalogStore(private val database: ArkaDatabase) {
             "4K" -> listOf("%4K%", "%UHD%")
             "FHD" -> listOf("%FHD%", "%1080%")
             "HD" -> listOf("HD %", "% HD %", "% HD", "%[HD]%", "%720%")
+            "ATMOS" -> listOf("%ATMOS%")
+            "HDR" -> listOf("%HDR%", "% DV %", "% DV", "%DOVI%", "%DOLBY VISION%")
             else -> emptyList()
         }
         for (patterns in listOf(language, quality)) {

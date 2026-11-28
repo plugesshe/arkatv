@@ -6,9 +6,16 @@ package tv.arka.app.data
  * Deliberately conservative: when in doubt the name is left as it is.
  */
 object TitleCleaner {
-    class Clean(val title: String, val year: String, val language: String = "", val quality: String = "") {
-        /** "FR 4K", "VOSTFR", "" — only what the provider wrote, never guessed. */
-        val tags: String get() = listOf(language, quality).filter { it.isNotEmpty() }.joinToString(" ")
+    class Clean(
+        val title: String,
+        val year: String,
+        val language: String = "",
+        val quality: String = "",
+        /** "HDR", "ATMOS" or both, when the provider writes them. */
+        val extras: String = "",
+    ) {
+        /** "FR 4K HDR ATMOS", "VOSTFR", "" — only what the provider wrote, never guessed. */
+        val tags: String get() = listOf(language, quality, extras).filter { it.isNotEmpty() }.joinToString(" ")
     }
 
     private val tokenSplit = Regex("[^A-Z0-9+]+")
@@ -32,7 +39,10 @@ object TitleCleaner {
     private val brackets = Regex("\\s*\\[[^\\]]*\\]")
     private val trailingYear = Regex("\\s*\\(((19|20)\\d{2})\\)\\s*$")
     private val trailingCountry = Regex("\\s*\\([A-Z]{2}\\)\\s*$")
-    private val trailingQuality = Regex("\\s+(4K|UHD|FHD|HD|SD|HEVC|MULTI|VOSTFR|VF|TRUEFRENCH)\\s*$")
+    private val trailingQuality = Regex(
+        "\\s+(4K|UHD|FHD|HD|SD|HEVC|H265|X265|MULTI|VOSTFR|VF|TRUEFRENCH|HDR10\\+|HDR10|HDR|DV|DOVI|ATMOS|DOLBY\\s+VISION|" +
+            "DOLBY\\s+ATMOS|DDP5\\.1|DD5\\.1|TRUEHD)\\s*$",
+    )
     private val spaces = Regex("\\s{2,}")
     private val episodeCode = Regex("^.*\\bS\\d{1,2}\\s*E\\d{1,3}\\b\\s*[-–:]*\\s*", RegexOption.IGNORE_CASE)
 
@@ -67,11 +77,16 @@ object TitleCleaner {
         if (text.length < 2) return Clean(raw.trim(), year)
         var language = ""
         var quality = ""
+        var hdr = false
+        var atmos = false
         for (token in removed.toString().uppercase().split(tokenSplit)) {
             if (language.isEmpty()) language = languageOf(token)
             if (quality.isEmpty()) quality = qualityOf(token)
+            if (token == "HDR" || token == "HDR10" || token == "HDR10+" || token == "DV" || token == "DOVI" || token == "VISION") hdr = true
+            if (token == "ATMOS") atmos = true
         }
-        return Clean(text, year, language, quality)
+        val extras = listOf(if (hdr) "HDR" else "", if (atmos) "ATMOS" else "").filter { it.isNotEmpty() }.joinToString(" ")
+        return Clean(text, year, language, quality, extras)
     }
 
     fun title(raw: String): String = clean(raw).title

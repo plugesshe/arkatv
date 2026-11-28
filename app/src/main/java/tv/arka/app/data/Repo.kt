@@ -13,6 +13,11 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import tv.arka.app.data.db.ArkaDatabase
@@ -244,7 +249,9 @@ object Repo {
             try {
                 refreshSmartRows(source, catalogStore)
                 // The same work often appears several times (4K, HD, languages): one request serves all.
-                val known = HashMap<String, Tmdb.Match?>()
+                val known = java.util.concurrent.ConcurrentHashMap<String, Any>()
+                val gate = Semaphore(TMDB_PARALLEL)
+                var hiccups = 0
                 var sinceRefresh = 0
                 var working = true
                 while (working && isActive) {
@@ -254,28 +261,62 @@ object Repo {
                         if (pending.isEmpty()) continue
                         working = true
                         tmdbStatus = "analyse en cours"
-                        withContext(Dispatchers.IO) {
-                            for (title in pending) {
-                                val clean = TitleCleaner.clean(title.name)
-                                val year = clean.year.ifBlank { title.year.take(4) }.takeIf { it.toIntOrNull() != null }.orEmpty()
-                                val key = kind.name + "|" + TextNormalizer.normalize(clean.title) + "|" + year
-                                val match = if (known.containsKey(key)) {
-                                    known[key]
-                                } else {
-                                    delay(TMDB_PAUSE_MS)
-                                    val found = Tmdb.search(token, kind == VodKind.MOVIE, clean.title, year)
-                                    known[key] = found
-                                    found
-                                }
-                                catalogStore.saveTmdb(source, kind, title.streamId, match, System.currentTimeMillis())
+                        // Several titles are looked up at once. A title whose request fails is simply
+                        // left for a later pass: a network hiccup never stops the whole analysis.
+                        val failed = withContext(Dispatchers.IO) {
+                            coroutineScope {
+                                pending.map { title ->
+                                    async {
+                                        gate.withPermit {
+                                            val clean = TitleCleaner.clean(title.name)
+                                            val year = clean.year.ifBlank { title.year.take(4) }.takeIf { it.toIntOrNull() != null }.orEmpty()
+                                            val key = kind.name + "|" + TextNormalizer.normalize(clean.title) + "|" + year
+                                            try {
+                                                val cached = known[key]
+                                                val match = if (cached != null) {
+                                                    cached as? Tmdb.Match
+                                                } else {
+                                                    val found = searchPatiently(token, kind == VodKind.MOVIE, clean.title, year)
+                                                    known[key] = found ?: TMDB_NO_MATCH
+                                                    found
+                                                }
+                                                catalogStore.saveTmdb(source, kind, title.streamId, match, System.currentTimeMillis())
+                                                false
+                                            } catch (e: Http.StatusException) {
+                                                // A refused key stops everything. A request TMDB rejects for
+                                                // good (a title it cannot parse) is recorded as not found, so
+                                                // that it is never asked again. The rest is a hiccup.
+                                                if (e.code == 401) throw e
+                                                if (e.code in 400..499 && e.code != 429) {
+                                                    catalogStore.saveTmdb(source, kind, title.streamId, null, System.currentTimeMillis())
+                                                    false
+                                                } else {
+                                                    true
+                                                }
+                                            } catch (e: java.io.IOException) {
+                                                true
+                                            }
+                                        }
+                                    }
+                                }.awaitAll().count { it }
                             }
+                        }
+                        if (failed == pending.size) {
+                            // Nothing went through: the network is down or TMDB is refusing. Wait, then
+                            // try again a limited number of times before leaving it for the next launch.
+                            hiccups++
+                            if (hiccups > TMDB_MAX_HICCUPS) throw java.io.IOException("réseau")
+                            tmdbStatus = "réseau instable, nouvelle tentative"
+                            delay(TMDB_HICCUP_PAUSE_MS)
+                        } else {
+                            hiccups = 0
                         }
                         sinceRefresh += pending.size
                         val counts = withContext(Dispatchers.IO) { catalogStore.tmdbCounts(source) }
                         tmdbMatched = counts.first
                         tmdbChecked = counts.second
                     }
-                    if (sinceRefresh >= TMDB_REFRESH_EVERY) {
+                    if (sinceRefresh >= TMDB_REFRESH_EVERY || (smartRows.isEmpty() && sinceRefresh >= TMDB_FIRST_REFRESH)) {
                         sinceRefresh = 0
                         refreshSmartRows(source, catalogStore)
                     }
@@ -380,9 +421,27 @@ object Repo {
         val series: SmartCounts,
     )
 
-    private const val TMDB_BATCH = 20
-    private const val TMDB_PAUSE_MS = 280L
-    private const val TMDB_REFRESH_EVERY = 100
+    /** TMDB sometimes answers "too many requests": wait a little and ask again, a few times. */
+    private suspend fun searchPatiently(token: String, movie: Boolean, title: String, year: String): Tmdb.Match? {
+        var attempt = 0
+        while (true) {
+            try {
+                return Tmdb.search(token, movie, title, year)
+            } catch (e: Http.StatusException) {
+                attempt++
+                if (e.code != 429 || attempt > 4) throw e
+                delay(1200L * attempt)
+            }
+        }
+    }
+
+    private val TMDB_NO_MATCH = Any()
+    private const val TMDB_BATCH = 120
+    private const val TMDB_PARALLEL = 8
+    private const val TMDB_MAX_HICCUPS = 12
+    private const val TMDB_HICCUP_PAUSE_MS = 10_000L
+    private const val TMDB_FIRST_REFRESH = 240
+    private const val TMDB_REFRESH_EVERY = 2400
     private const val SMART_ROW_SIZE = 24
     private const val SMART_ROW_MIN = 6
 

@@ -57,6 +57,14 @@ class TmdbTest {
         assertEquals("VOSTFR FHD", TitleCleaner.clean("VOSTFR - Shogun FHD").tags)
         assertEquals("", TitleCleaner.clean("Les Héritiers du Vent").tags)
         assertEquals("", TitleCleaner.clean("4M-AMZ - MELANIA the Series (2025)").tags)
+        val dune = TitleCleaner.clean("FR - Dune (2021) 4K HDR ATMOS")
+        assertEquals("Dune", dune.title)
+        assertEquals("2021", dune.year)
+        assertEquals("FR 4K HDR ATMOS", dune.tags)
+        assertEquals("4K HDR", TitleCleaner.clean("Oppenheimer [4K DV]").tags)
+        // Words that only look like tags stay in the title.
+        assertEquals("Double Vision", TitleCleaner.clean("Double Vision").title)
+        assertEquals("", TitleCleaner.clean("Double Vision").tags)
     }
 
     @Test

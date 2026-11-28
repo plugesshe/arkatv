@@ -98,6 +98,10 @@ import android.widget.Toast
 import kotlinx.coroutines.MainScope
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import tv.arka.app.data.Downloads
+import tv.arka.app.data.Vod
+import tv.arka.app.data.VodKind
+import androidx.media3.common.MimeTypes
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import tv.arka.app.data.Recordings
 import tv.arka.app.player.TimeshiftBuffer
 import tv.arka.app.player.TimeshiftDataSource
@@ -207,6 +211,13 @@ class PlayerActivity : ComponentActivity() {
     private var lastChannelIndex by mutableIntStateOf(-1)
     private var triedAlternative = false
 
+    /** Codec and size of the video being played, for messages ("HEVC 3840×2160"). */
+    private var videoDescription = ""
+
+    /** Keys of the versions of the current film already tried, so that switching never loops. */
+    private val triedVersions = HashSet<String>()
+    private var switchingVersion = false
+
     /** Disk buffer of the live channel being watched, when "pause du direct" is on. */
     private var timeshift: TimeshiftBuffer? = null
     private var timeshiftFailed = false
@@ -234,7 +245,10 @@ class PlayerActivity : ComponentActivity() {
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(Http.USER_AGENT)
-        val exo = ExoPlayer.Builder(this)
+        // When the preferred decoder of the device refuses a video, the next one that can read it
+        // (often the software one) is tried instead of giving up.
+        val renderers = DefaultRenderersFactory(this).setEnableDecoderFallback(true)
+        val exo = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
             .build()
         // Remote-control seeking lands on the nearest key frame: much faster on set-top boxes.
@@ -261,8 +275,25 @@ class PlayerActivity : ComponentActivity() {
                         triedAlternative = true
                         start(alternative, 0)
                     }
+                    // A film this device cannot decode: another version of it may be readable.
+                    isDecodingError(error) && otherVersion(automatic = true) -> {}
                     else -> {
                         errorText = describe(error)
+                        overlay = true
+                    }
+                }
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                val video = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
+                videoDescription = video.firstOrNull()?.takeIf { it.length > 0 }?.getTrackFormat(0)?.let { describeVideo(it) }.orEmpty()
+                // Sound without picture: the video exists but nothing here can decode it.
+                if (video.isNotEmpty() && video.none { it.isSupported } && queue.getOrNull(index)?.live == false) {
+                    if (!otherVersion(automatic = true)) {
+                        exo.playWhenReady = false
+                        errorText = "Cet appareil ne peut pas décoder l'image de cette vidéo" +
+                            (if (videoDescription.isNotEmpty()) " ($videoDescription)." else ".") +
+                            "\nEssayez une autre version depuis la fiche."
                         overlay = true
                     }
                 }
@@ -326,6 +357,7 @@ class PlayerActivity : ComponentActivity() {
                     onLastChannel = { goToLastChannel() },
                     onStartOver = { startOverLive() },
                     delayed = delayed,
+                    onOtherVersion = { otherVersion(automatic = false) },
                     onBackToLive = { load(index) },
                     onRetry = { retry() },
                     onPip = { enterPip() },
@@ -340,6 +372,8 @@ class PlayerActivity : ComponentActivity() {
         val previous = index
         index = ((target % queue.size) + queue.size) % queue.size
         triedAlternative = false
+        triedVersions.clear()
+        videoDescription = ""
         timeshiftFailed = false
         delayed = false
         errorText = null
@@ -376,6 +410,79 @@ class PlayerActivity : ComponentActivity() {
         }
         exo.prepare()
         exo.playWhenReady = true
+    }
+
+    private fun isDecodingError(error: PlaybackException): Boolean = when (error.errorCode) {
+        PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FAILED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
+        PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
+        -> true
+        else -> false
+    }
+
+    private fun describeVideo(format: androidx.media3.common.Format): String {
+        val codec = when (format.sampleMimeType) {
+            MimeTypes.VIDEO_H265 -> "HEVC"
+            MimeTypes.VIDEO_H264 -> "H.264"
+            MimeTypes.VIDEO_DOLBY_VISION -> "Dolby Vision"
+            MimeTypes.VIDEO_AV1 -> "AV1"
+            MimeTypes.VIDEO_VP9 -> "VP9"
+            MimeTypes.VIDEO_MPEG2 -> "MPEG-2"
+            else -> format.sampleMimeType.orEmpty().substringAfter('/')
+        }
+        return if (format.width > 0 && format.height > 0) "$codec ${format.width}×${format.height}" else codec
+    }
+
+    /**
+     * Replaces the film being played by another version the source offers (matched through TMDB),
+     * lighter ones first. Returns false when there is nothing to try: not a film, no other version
+     * known, or all of them already tried. [automatic] is true when the device could not decode.
+     */
+    private fun otherVersion(automatic: Boolean): Boolean {
+        val item = queue.getOrNull(index) ?: return false
+        if (item.live || !item.key.startsWith("m:") || switchingVersion) return switchingVersion
+        if (Repo.tmdbToken.isBlank() || Repo.tmdbMatched == 0) return false
+        val position = player?.currentPosition ?: 0
+        triedVersions.add(item.key)
+        switchingVersion = true
+        player?.playWhenReady = false
+        scope.launch {
+            val current = Vod(item.key.removePrefix("m:"), VodKind.MOVIE, item.title, item.poster, "", item.url)
+            // 4K versions last: they are the ones a modest device fails on.
+            val next = Repo.variants(current)
+                .filter { "m:" + it.id !in triedVersions }
+                .sortedBy { if ("4K" in it.tags) 1 else 0 }
+                .firstOrNull()
+            switchingVersion = false
+            if (next == null) {
+                errorText = if (automatic) {
+                    "Cet appareil ne peut pas décoder cette vidéo" +
+                        (if (videoDescription.isNotEmpty()) " ($videoDescription)" else "") +
+                        ", et la source n'en propose pas d'autre version connue."
+                } else {
+                    null
+                }
+                if (!automatic) {
+                    Toast.makeText(this@PlayerActivity, "Aucune autre version connue pour ce film.", Toast.LENGTH_SHORT).show()
+                    player?.playWhenReady = true
+                }
+                overlay = true
+            } else if (!isFinishing) {
+                val replacement = PlayItem("m:" + next.id, item.title, next.tags, next.url, live = false, poster = item.poster)
+                Toast.makeText(
+                    this@PlayerActivity,
+                    (if (automatic) "Version illisible sur cet appareil. " else "") +
+                        "Passage à la version " + next.tags.ifBlank { "suivante" } + ".",
+                    Toast.LENGTH_LONG,
+                ).show()
+                queue = queue.toMutableList().also { it[index] = replacement }
+                errorText = null
+                triedAlternative = false
+                start(replacement.url, if (automatic) 0 else position)
+            }
+        }
+        return true
     }
 
     private fun retry() {
@@ -438,7 +545,7 @@ class PlayerActivity : ComponentActivity() {
             PlaybackException.ERROR_CODE_DECODING_FAILED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_UNSUPPORTED,
             PlaybackException.ERROR_CODE_DECODING_FORMAT_EXCEEDS_CAPABILITIES,
-            -> "Cet appareil ne peut pas décoder cette vidéo."
+            -> "Cet appareil ne peut pas décoder cette vidéo" + (if (videoDescription.isNotEmpty()) " ($videoDescription)." else ".")
             else -> "Lecture impossible."
         }
         return message + "\n" + error.errorCodeName
@@ -761,6 +868,7 @@ private fun PlayerScreen(
     onLastChannel: () -> Unit,
     onStartOver: () -> Unit,
     delayed: Boolean,
+    onOtherVersion: () -> Unit,
     onBackToLive: () -> Unit,
     onRetry: () -> Unit,
     onPip: () -> Unit,
@@ -1085,6 +1193,10 @@ private fun PlayerScreen(
                         )
                     }
                     Text(item.title, color = Color.White, style = ArkaTheme.type.heading, fontWeight = FontWeight(700), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    val formats = playingFormats(player)
+                    if (formats.isNotEmpty()) {
+                        Text(formats, color = ArkaColors.TextSecondary, style = ArkaTheme.type.mono, maxLines = 1)
+                    }
                     if (!item.live && item.subtitle.isNotBlank()) {
                         Text(item.subtitle, color = ArkaColors.TextSecondary, style = ArkaTheme.type.label, fontWeight = FontWeight(500), maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -1421,6 +1533,13 @@ private fun PlayerScreen(
                         })
                     }
                     SheetOption("Diagnostics", showStats, onClick = { showStats = !showStats })
+                    if (!item.live && item.key.startsWith("m:") && Repo.tmdbMatched > 0) {
+                        // For a black picture or a jerky one: the source may offer a lighter version.
+                        SheetOption("Essayer une autre version", false, onClick = {
+                            panel = PANEL_NONE
+                            onOtherVersion()
+                        })
+                    }
                     if (Downloads.canDownload(item)) {
                         val kept = Downloads.has(item.key)
                         SheetOption(if (kept) "Dans vos téléchargements" else "Télécharger cette vidéo", kept, onClick = {
@@ -1655,4 +1774,45 @@ private fun TvSeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit) {
             }
         }
     }
+}
+
+/**
+ * What the player is really decoding, read from the stream itself: "4K · HDR · Dolby Atmos · 5.1".
+ * Empty until the first frames are known. This is the truth of the file, whatever its title says.
+ */
+private fun playingFormats(player: ExoPlayer): String {
+    val parts = ArrayList<String>()
+    val video = player.videoFormat
+    if (video != null) {
+        val height = video.height
+        val width = video.width
+        when {
+            width >= 3800 || height >= 2000 -> parts.add("4K")
+            width >= 1900 || height >= 1000 -> parts.add("Full HD")
+            height >= 700 -> parts.add("HD")
+            height > 0 -> parts.add("SD")
+        }
+        val transfer = video.colorInfo?.colorTransfer
+        when {
+            video.sampleMimeType == MimeTypes.VIDEO_DOLBY_VISION -> parts.add("Dolby Vision")
+            transfer == C.COLOR_TRANSFER_ST2084 || transfer == C.COLOR_TRANSFER_HLG -> parts.add("HDR")
+        }
+    }
+    val audio = player.audioFormat
+    if (audio != null) {
+        when (audio.sampleMimeType) {
+            MimeTypes.AUDIO_E_AC3_JOC -> parts.add("Dolby Atmos")
+            MimeTypes.AUDIO_TRUEHD -> parts.add("Dolby TrueHD")
+            MimeTypes.AUDIO_E_AC3 -> parts.add("Dolby Digital+")
+            MimeTypes.AUDIO_AC3 -> parts.add("Dolby Digital")
+            MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_EXPRESS -> parts.add("DTS")
+            MimeTypes.AUDIO_AAC -> parts.add("AAC")
+        }
+        when (audio.channelCount) {
+            6 -> parts.add("5.1")
+            8 -> parts.add("7.1")
+            2 -> parts.add("stéréo")
+        }
+    }
+    return parts.joinToString(" · ")
 }

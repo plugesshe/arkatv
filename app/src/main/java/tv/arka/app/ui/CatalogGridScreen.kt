@@ -390,7 +390,10 @@ fun CatalogGridScreen(
     }
     if (showQuality) {
         ArkaSheet("Qualité", onDismiss = { showQuality = false }) {
-            listOf("" to "Toutes", "4K" to "4K", "FHD" to "Full HD", "HD" to "HD").forEach { (value, label) ->
+            listOf(
+                "" to "Toutes", "4K" to "4K", "FHD" to "Full HD", "HD" to "HD",
+                "HDR" to "HDR / Dolby Vision", "ATMOS" to "Dolby Atmos",
+            ).forEach { (value, label) ->
                 SheetOption(label, state.quality == value, onClick = {
                     state.quality = value
                     showQuality = false
