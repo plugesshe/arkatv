@@ -1780,6 +1780,7 @@ private fun TvSeekBar(position: Long, duration: Long, onSeek: (Long) -> Unit) {
  * What the player is really decoding, read from the stream itself: "4K · HDR · Dolby Atmos · 5.1".
  * Empty until the first frames are known. This is the truth of the file, whatever its title says.
  */
+@androidx.annotation.OptIn(UnstableApi::class)
 private fun playingFormats(player: ExoPlayer): String {
     val parts = ArrayList<String>()
     val video = player.videoFormat
