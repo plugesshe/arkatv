@@ -102,6 +102,15 @@ import tv.arka.app.data.Vod
 import tv.arka.app.data.VodKind
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.common.AudioAttributes
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
+import androidx.media3.exoplayer.mediacodec.MediaCodecInfo
+import androidx.media3.exoplayer.mediacodec.MediaCodecRenderer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.mediacodec.MediaCodecUtil
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
 import tv.arka.app.data.Recordings
 import tv.arka.app.player.TimeshiftBuffer
 import tv.arka.app.player.TimeshiftDataSource
@@ -211,6 +220,12 @@ class PlayerActivity : ComponentActivity() {
     private var lastChannelIndex by mutableIntStateOf(-1)
     private var triedAlternative = false
 
+    /** Leaves out the decoders that already failed on the video being played. */
+    private val codecSelector = AdaptiveCodecSelector()
+    private val decoderFailures = HashMap<String, Int>()
+    private var decoderRecoveries = 0
+    private var softwareVideo by mutableStateOf(false)
+
     /** Codec and size of the video being played, for messages ("HEVC 3840×2160"). */
     private var videoDescription = ""
 
@@ -245,12 +260,32 @@ class PlayerActivity : ComponentActivity() {
         val http = DefaultHttpDataSource.Factory()
             .setAllowCrossProtocolRedirects(true)
             .setUserAgent(Http.USER_AGENT)
-        // When the preferred decoder of the device refuses a video, the next one that can read it
-        // (often the software one) is tried instead of giving up.
-        val renderers = DefaultRenderersFactory(this).setEnableDecoderFallback(true)
-        val exo = ExoPlayer.Builder(this, renderers)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http)))
+        // Decoders: the device's own first; when one refuses or breaks on a video, the next one is
+        // tried (see recoverDecoder), down to the bundled software audio decoders.
+        val renderers = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+            .setMediaCodecSelector(codecSelector)
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+        // Provider streams are rarely clean: accept pictures that do not start on a full key frame
+        // (otherwise a channel can stay black for seconds) and files without a seek index.
+        val extractors = DefaultExtractorsFactory()
+            .setTsExtractorFlags(
+                DefaultTsPayloadReaderFactory.FLAG_ALLOW_NON_IDR_KEYFRAMES or DefaultTsPayloadReaderFactory.FLAG_DETECT_ACCESS_UNITS
+            )
+            .setConstantBitrateSeekingEnabled(true)
+        // Start after one second of buffer, then keep up to a minute ahead to ride out slow moments.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(20_000, 60_000, 1_000, 3_000)
+            .setPrioritizeTimeOverSizeThresholds(true)
             .build()
+        val exo = ExoPlayer.Builder(this, renderers)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(DefaultDataSource.Factory(this, http), extractors))
+            .setLoadControl(loadControl)
+            .build()
+        exo.setAudioAttributes(
+            AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
+            true,
+        )
         // Remote-control seeking lands on the nearest key frame: much faster on set-top boxes.
         exo.setSeekParameters(SeekParameters.CLOSEST_SYNC)
         player = exo
@@ -275,7 +310,9 @@ class PlayerActivity : ComponentActivity() {
                         triedAlternative = true
                         start(alternative, 0)
                     }
-                    // A film this device cannot decode: another version of it may be readable.
+                    // A decoder that refuses or breaks: retry, then the next decoder, silently.
+                    isDecodingError(error) && recoverDecoder(error) -> {}
+                    // A film this device cannot decode at all: another version of it may be readable.
                     isDecodingError(error) && otherVersion(automatic = true) -> {}
                     else -> {
                         errorText = describe(error)
@@ -358,6 +395,9 @@ class PlayerActivity : ComponentActivity() {
                     onStartOver = { startOverLive() },
                     delayed = delayed,
                     onOtherVersion = { otherVersion(automatic = false) },
+                    softwareVideo = softwareVideo,
+                    onSoftwareVideo = { toggleSoftwareVideo() },
+                    onExternal = { openExternally() },
                     onBackToLive = { load(index) },
                     onRetry = { retry() },
                     onPip = { enterPip() },
@@ -373,6 +413,11 @@ class PlayerActivity : ComponentActivity() {
         index = ((target % queue.size) + queue.size) % queue.size
         triedAlternative = false
         triedVersions.clear()
+        codecSelector.blocked.clear()
+        codecSelector.softwareVideo = false
+        softwareVideo = false
+        decoderFailures.clear()
+        decoderRecoveries = 0
         videoDescription = ""
         timeshiftFailed = false
         delayed = false
@@ -410,6 +455,77 @@ class PlayerActivity : ComponentActivity() {
         }
         exo.prepare()
         exo.playWhenReady = true
+    }
+
+    /** Name of the decoder that raised [error], when the player knows it. */
+    private fun failedDecoder(error: PlaybackException): String? {
+        var cause: Throwable? = error
+        while (cause != null) {
+            if (cause is MediaCodecDecoderException) return cause.codecInfo?.name
+            if (cause is MediaCodecRenderer.DecoderInitializationException) return cause.codecInfo?.name
+            cause = cause.cause
+        }
+        return null
+    }
+
+    /**
+     * What a good player does without bothering the viewer when decoding fails:
+     * 1. play on from the same place — a damaged passage in a stream is common;
+     * 2. if the same decoder fails again, rule it out for this video, so that the next one takes
+     *    over (another hardware decoder, the software one, or the bundled audio decoders).
+     * Returns false once this has been tried enough: the caller then looks for another version.
+     */
+    private fun recoverDecoder(error: PlaybackException): Boolean {
+        val exo = player ?: return false
+        if (decoderRecoveries >= MAX_DECODER_RECOVERIES) return false
+        decoderRecoveries++
+        val name = failedDecoder(error)
+        var skipAhead = false
+        if (name != null) {
+            val count = (decoderFailures[name] ?: 0) + 1
+            decoderFailures[name] = count
+            if (count >= 2 || error.errorCode != PlaybackException.ERROR_CODE_DECODING_FAILED) {
+                // Refused outright, or broke twice: this decoder is not the one for this video.
+                codecSelector.blocked.add(name)
+            } else {
+                skipAhead = true
+            }
+        }
+        val live = queue.getOrNull(index)?.live == true
+        val position = exo.currentPosition
+        exo.prepare()
+        // Step over the passage that broke the decoder.
+        if (skipAhead && !live && exo.isCurrentMediaItemSeekable) exo.seekTo(position + 1500)
+        exo.playWhenReady = true
+        return true
+    }
+
+    /** Manual switch, for a picture that stays black or tears with the device's own decoder. */
+    private fun toggleSoftwareVideo() {
+        val exo = player ?: return
+        softwareVideo = !softwareVideo
+        codecSelector.softwareVideo = softwareVideo
+        val position = exo.currentPosition
+        val live = queue.getOrNull(index)?.live == true
+        exo.stop()
+        exo.prepare()
+        if (!live && position > 0) exo.seekTo(position)
+        exo.playWhenReady = true
+    }
+
+    /** Last resort offered on an error: hand the video to another player installed on the device. */
+    private fun openExternally() {
+        val item = queue.getOrNull(index) ?: return
+        try {
+            startActivity(
+                Intent.createChooser(
+                    Intent(Intent.ACTION_VIEW).setDataAndType(android.net.Uri.parse(item.url), "video/*"),
+                    "Ouvrir avec",
+                ).addFlags(Intent.FLAG_ACTIVITY_NO_USER_ACTION)
+            )
+        } catch (e: android.content.ActivityNotFoundException) {
+            Toast.makeText(this, "Aucun autre lecteur vidéo n'est installé.", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun isDecodingError(error: PlaybackException): Boolean = when (error.errorCode) {
@@ -830,6 +946,35 @@ private const val PANEL_SETTINGS = 2
 private const val PANEL_QUEUE = 3
 private const val PANEL_RECORD = 4
 
+/** How many times a video may be restarted on another decoder before looking for another version. */
+private const val MAX_DECODER_RECOVERIES = 6
+
+/**
+ * Lists the decoders the device has for a format, without the ones ruled out for the video being
+ * played, and without the hardware video decoders when software decoding was asked for.
+ */
+@androidx.annotation.OptIn(UnstableApi::class)
+private class AdaptiveCodecSelector : MediaCodecSelector {
+    val blocked: MutableSet<String> = java.util.Collections.synchronizedSet(HashSet())
+
+    @Volatile
+    var softwareVideo = false
+
+    override fun getDecoderInfos(
+        mimeType: String,
+        requiresSecureDecoder: Boolean,
+        requiresTunnelingDecoder: Boolean,
+    ): List<MediaCodecInfo> {
+        val usable = MediaCodecUtil.getDecoderInfos(mimeType, requiresSecureDecoder, requiresTunnelingDecoder)
+            .filter { it.name !in blocked }
+        if (softwareVideo && MimeTypes.isVideo(mimeType)) {
+            val software = usable.filter { !it.hardwareAccelerated }
+            if (software.isNotEmpty()) return software
+        }
+        return usable
+    }
+}
+
 /** Offered recording lengths in minutes; 0 records until it is stopped. */
 private val recordingLengths = listOf(30 to "30 minutes", 60 to "1 heure", 120 to "2 heures", 180 to "3 heures", 0 to "Jusqu'à l'arrêt")
 
@@ -869,6 +1014,9 @@ private fun PlayerScreen(
     onStartOver: () -> Unit,
     delayed: Boolean,
     onOtherVersion: () -> Unit,
+    softwareVideo: Boolean,
+    onSoftwareVideo: () -> Unit,
+    onExternal: () -> Unit,
     onBackToLive: () -> Unit,
     onRetry: () -> Unit,
     onPip: () -> Unit,
@@ -1412,6 +1560,7 @@ private fun PlayerScreen(
                 Row(Modifier.padding(top = ArkaSpacing.lg), horizontalArrangement = Arrangement.spacedBy(ArkaSpacing.sm)) {
                     FocusOnShow(tv) { PrimaryButton("Réessayer", onRetry) }
                     if (item.live && hasQueue) SecondaryButton("Chaîne suivante", onNext)
+                    if (!item.live) SecondaryButton("Autre lecteur", onExternal)
                     SecondaryButton("Fermer", onBack)
                 }
             }
@@ -1533,6 +1682,11 @@ private fun PlayerScreen(
                         })
                     }
                     SheetOption("Diagnostics", showStats, onClick = { showStats = !showStats })
+                    // For a picture that stays black or tears: bypass the device's own video decoder.
+                    SheetOption("Décodage logiciel de l'image", softwareVideo, onClick = {
+                        panel = PANEL_NONE
+                        onSoftwareVideo()
+                    })
                     if (!item.live && item.key.startsWith("m:") && Repo.tmdbMatched > 0) {
                         // For a black picture or a jerky one: the source may offer a lighter version.
                         SheetOption("Essayer une autre version", false, onClick = {

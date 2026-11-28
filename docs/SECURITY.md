@@ -100,3 +100,9 @@ Une seule permission : `INTERNET`. Aucun compte, aucun traceur, aucune télémé
 - Les touches sont injectées par l'application dans ses propres fenêtres : le système les refuse si une
   autre application est à l'écran. Aucune autre commande n'existe (pas de fichiers, pas de réglages).
 - La page n'est pas chiffrée : à réserver à un réseau domestique.
+
+## Licence des décodeurs audio
+
+Le module `org.jellyfin.media3:media3-ffmpeg-decoder` (décodeurs audio FFmpeg) est sous GPL-3.0. Tant que
+l'application reste d'usage personnel, cela n'impose rien ; une diffusion publique de l'APK devrait se
+faire sous une licence compatible, ou sans ce module.

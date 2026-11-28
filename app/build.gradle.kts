@@ -75,6 +75,8 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    // Software audio decoders (AC-3, E-AC-3, DTS, TrueHD…) for devices that lack them. GPL-3.0.
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
     implementation("androidx.media3:media3-exoplayer:1.5.1")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.1")
     implementation("androidx.media3:media3-ui:1.5.1")

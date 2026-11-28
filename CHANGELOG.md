@@ -102,6 +102,13 @@
 - Affiches gardées sur disque, sans fondu sur TV.
 
 ### Lecteur
+- Reprise automatique sur erreur de décodage : la lecture repart du même endroit, puis change de décodeur
+  si le même échoue encore (autre décodeur matériel, logiciel, ou décodeurs audio embarqués), sans message.
+- Décodeurs audio logiciels embarqués (AC-3, E-AC-3, DTS, TrueHD…) pour les appareils qui n'en ont pas.
+- Réglages du lecteur : « Décodage logiciel de l'image », pour une image noire ou déchirée.
+- Sur une erreur de lecture d'un film ou d'un épisode : « Autre lecteur » ouvre la vidéo dans une autre application.
+- Flux de fournisseurs : image acceptée sans attendre une image clé complète (moins d'écrans noirs au
+  démarrage d'une chaîne), démarrage après une seconde de tampon, jusqu'à une minute d'avance.
 - Vidéo que l'appareil ne décode pas : le lecteur essaie un autre décodeur, puis, pour un film reconnu
   par TMDB, passe de lui-même à une autre version proposée par la source (les versions 4K en dernier).
 - Son sans image : le lecteur ne reste plus sur un écran noir, il change de version ou explique pourquoi
